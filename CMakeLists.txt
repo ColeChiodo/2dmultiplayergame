@@ -3,7 +3,7 @@ project(2dmultiplayergame C)
 
 find_package(raylib REQUIRED)
 
-add_executable(main main.c)
+add_executable(main src/main.c)
 target_link_libraries(main PRIVATE raylib)
 
 set_target_properties(main PROPERTIES
