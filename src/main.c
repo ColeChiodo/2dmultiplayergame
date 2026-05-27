@@ -18,16 +18,40 @@ struct InputState {
     bool heavy;
 };
 
+enum AttackType { ATTACK_LIGHT, ATTACK_MEDIUM, ATTACK_HEAVY, ATTACK_COUNT };
+
+struct AttackData {
+	int startup, active, recovery;
+	float moveX, moveY;
+	int damage;
+};
+
 struct Character {
     const char* name;
     float walkSpeed;
     float jumpStrength;
+    float width;
+    float height;
+	struct AttackData attacks[ATTACK_COUNT];
 };
 
 static struct Character character1 = {
     .name = "Character 1",
     .walkSpeed = 300.0f,
-    .jumpStrength = 700.0f
+    .jumpStrength = 700.0f,
+    .width = 50.0f,
+    .height = 100.0f,
+	.attacks = {
+        [ATTACK_LIGHT] = (struct AttackData) {
+		    .startup = 3, .active = 5, .recovery = 7, .moveX = 0.0f, .moveY = 0.0f, .damage = 100
+		},
+        [ATTACK_MEDIUM] = (struct AttackData) {
+		    .startup = 5, .active = 5, .recovery = 8, .moveX = 0.0f, .moveY = 0.0f, .damage = 200
+		},
+		[ATTACK_HEAVY] = (struct AttackData) {
+		    .startup = 8, .active = 10, .recovery = 10, .moveX = 300.0f, .moveY = 0.0f, .damage = 400
+		},
+    },
 };
 
 enum PlayerState {
@@ -48,6 +72,16 @@ struct Player {
     int stateTimer;
 };
 
+struct GameInput {
+	struct InputState players[MAX_PLAYERS];
+};
+
+struct GameState {
+	struct Player players[MAX_PLAYERS];
+	struct GameInput inputBuffer[INPUT_BUFFER_SIZE];
+	int currentFrame;
+};
+
 struct SaveState {
     float x, y;
     float velocityX, velocityY;
@@ -56,19 +90,18 @@ struct SaveState {
     int stateTimer;
 };
 
-// Rollback infrastructure
-static struct InputState inputBuffer[INPUT_BUFFER_SIZE];
-static int currentFrame = 0;
-
-static struct Player player;
+static struct GameState gameState;
 static float simFPS = 0.0f;
 static float simFrameTimeMs = 0.0f;
 
-void GameStep(struct Player* player, const struct InputState* input, const struct InputState* prevInput);
-void SavePlayerState(const struct Player* player, struct SaveState* save);
-void RestorePlayerState(struct Player* player, const struct SaveState* save);
+void InitGameState();
+void InitPlayer(struct Player* p, float x, float y, struct Character* c);
+void GameStep(struct Player* p, const struct InputState* input, const struct InputState* prevInput);
+void SavePlayerState(const struct Player* p, struct SaveState* save);
+void RestorePlayerState(struct Player* p, const struct SaveState* save);
 struct InputState GatherInputs(void);
-void RunOneSimStep(void);
+struct InputState GatherInputs2(void);
+void RunOneSimStep(struct GameState* gs);
 
 void SavePlayerState(const struct Player* player, struct SaveState* save) {
     save->x = player->x;
@@ -90,6 +123,17 @@ void RestorePlayerState(struct Player* player, const struct SaveState* save) {
     player->stateTimer = save->stateTimer;
 }
 
+void InitPlayer(struct Player * player, float x, float y, struct Character* character) {
+	player->x = x;
+    player->y = y;
+    player->velocityX = 0.0f;
+    player->velocityY = 0.0f;
+    player->grounded = false;
+    player->state = STATE_IDLE;
+	player->character = character;
+    player->stateTimer = 0;
+}
+
 void GameStep(struct Player* player, const struct InputState* input, const struct InputState* prevInput) {
     int dirX = 0;
     if (input->left && !input->right) {
@@ -106,21 +150,23 @@ void GameStep(struct Player* player, const struct InputState* input, const struc
     switch (player->state) {
         case STATE_IDLE:
         case STATE_WALK:
-            player->velocityX = dirX * player->character->walkSpeed;
-            player->state = (dirX != 0) ? STATE_WALK : STATE_IDLE;
-
-            if (input->up && player->grounded) {
-                player->velocityY = -player->character->jumpStrength;
-                player->grounded = false;
-                player->state = STATE_JUMP;
-            }
-
             if (attackPressed) {
-                player->state = STATE_ATTACK;
-                player->stateTimer = ATTACK_DURATION;
-            }
-            break;
+		        player->velocityX = 0.0f;
+		        player->state = STATE_ATTACK;
+		        player->stateTimer = ATTACK_DURATION;
+		        break;
+			}
 
+		    player->velocityX = dirX * player->character->walkSpeed;
+		    player->state = (dirX != 0) ? STATE_WALK : STATE_IDLE;
+
+		    if (input->up && player->grounded) {
+		        player->velocityY = -player->character->jumpStrength;
+		        player->grounded = false;
+		        player->state = STATE_JUMP;
+		    }
+
+		    break;
         case STATE_JUMP:
             if (attackPressed) {
                 player->state = STATE_ATTACK;
@@ -131,13 +177,17 @@ void GameStep(struct Player* player, const struct InputState* input, const struc
             if (player->grounded) {
                 player->state = (dirX != 0) ? STATE_WALK : STATE_IDLE;
             }
-            break;
 
+            break;
         case STATE_ATTACK:
             player->stateTimer--;
+            if (player->grounded) {
+                player->velocityX = 0.0f;
+            }
             if (player->stateTimer <= 0) {
                 player->state = player->grounded ? STATE_IDLE : STATE_JUMP;
             }
+
             break;
     }
 
@@ -170,24 +220,48 @@ struct InputState GatherInputs(void) {
     return input;
 }
 
-void RunOneSimStep(void) {
-    struct InputState input = GatherInputs();
+struct InputState GatherInputs2(void) {
+    struct InputState input = {0};
 
-    int index = currentFrame % INPUT_BUFFER_SIZE;
-    inputBuffer[index] = input;
+    input.left   = IsKeyDown(KEY_LEFT);
+    input.right  = IsKeyDown(KEY_RIGHT);
+    input.up     = IsKeyDown(KEY_UP);
+    input.down   = IsKeyDown(KEY_DOWN);
 
-    struct InputState emptyInput = {0};
-    struct InputState* prevInput = &emptyInput;
-    if (currentFrame > 0) {
-        int prevIndex = (currentFrame - 1) % INPUT_BUFFER_SIZE;
-        prevInput = &inputBuffer[prevIndex];
+    input.light  = IsKeyDown(KEY_COMMA);
+    input.medium = IsKeyDown(KEY_PERIOD);
+    input.heavy  = IsKeyDown(KEY_SLASH);
+
+    return input;
+}
+
+void RunOneSimStep(struct GameState* gs) {
+	struct GameInput frameInput;
+
+    frameInput.players[0] = GatherInputs();
+    frameInput.players[1] = GatherInputs2();
+	
+    int index = gs->currentFrame % INPUT_BUFFER_SIZE;
+    gs->inputBuffer[index] = frameInput;
+
+    struct GameInput emptyFrame = {0};
+    struct GameInput* prevFrame = &emptyFrame;
+
+    if (gs->currentFrame > 0) {
+        int prevIndex = (gs->currentFrame - 1) % INPUT_BUFFER_SIZE;
+        prevFrame = &gs->inputBuffer[prevIndex];
     }
 
     double stepStart = GetTime();
-    GameStep(&player, &input, prevInput);
-    currentFrame++;
-    double stepEnd = GetTime();
 
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        GameStep(&gs->players[i],
+                 &gs->inputBuffer[index].players[i],
+                 &prevFrame->players[i]);
+    }
+
+    gs->currentFrame++;
+    double stepEnd = GetTime();
     simFrameTimeMs = (float)((stepEnd - stepStart) * 1000.0);
 }
 
@@ -196,11 +270,9 @@ int main(void) {
     const int screenHeight = 600;
 
     InitWindow(screenWidth, screenHeight, "Cole's Fighting Game");
-
-    player.x = 400.0f;
-    player.y = 400.0f;
-    player.state = STATE_IDLE;
-    player.character = &character1;
+	
+	InitPlayer(&gameState.players[0], 200.0f, GROUND_HEIGHT, &character1);
+    InitPlayer(&gameState.players[1], 600.0f, GROUND_HEIGHT, &character1);
 
     double accumulator = 0.0;
     double fpsTimer = 0.0;
@@ -218,20 +290,15 @@ int main(void) {
         // Dev input handling
         if (IsKeyPressed(KEY_F1)) showDebugOverlay = !showDebugOverlay;
         if (IsKeyPressed(KEY_F2)) {
-            player.x = 400.0f;
-            player.y = 400.0f;
-            player.velocityX = 0.0f;
-            player.velocityY = 0.0f;
-            player.grounded = false;
-            player.state = STATE_IDLE;
-            player.stateTimer = 0;
+			InitPlayer(&gameState.players[0], 200.0f, GROUND_HEIGHT, &character1);
+			InitPlayer(&gameState.players[1], 600.0f, GROUND_HEIGHT, &character1);
         }
         if (IsKeyPressed(KEY_F3)) paused = !paused;
         if (IsKeyPressed(KEY_F4)) doStep = 1;
 
         if (paused) {
             if (doStep) {
-                RunOneSimStep();
+                RunOneSimStep(&gameState);
                 doStep = 0;
             }
         } else {
@@ -239,7 +306,7 @@ int main(void) {
 
             int stepsRun = 0;
             while (accumulator >= DT) {
-                RunOneSimStep();
+                RunOneSimStep(&gameState);
                 accumulator -= DT;
                 stepsRun++;
             }
@@ -255,14 +322,22 @@ int main(void) {
 
         BeginDrawing();
             ClearBackground(RAYWHITE);
-            DrawRectangle(player.x, player.y, 50, 100, RED);
 
+			DrawRectangle(0, GROUND_HEIGHT, screenWidth, screenHeight, GRAY);
+
+            float pw0 = gameState.players[0].character->width;
+            float ph0 = gameState.players[0].character->height;
+            DrawRectangle(gameState.players[0].x - pw0 * 0.5f, gameState.players[0].y - ph0, pw0, ph0, RED);
+            float pw1 = gameState.players[1].character->width;
+            float ph1 = gameState.players[1].character->height;
+			DrawRectangle(gameState.players[1].x - pw1 * 0.5f, gameState.players[1].y - ph1, pw1, ph1, BLUE);
+			
             if (paused) {
 				DrawText("PAUSED", screenWidth / 2 - 50, screenHeight / 2 - 10, 30, RED);
             }
 
             if (showDebugOverlay) {
-                DrawText(TextFormat("Frame: %d", currentFrame), 10, 10, 20, BLACK);
+                DrawText(TextFormat("Frame: %d", gameState.currentFrame), 10, 10, 20, BLACK);
                 DrawText(TextFormat("Sim FPS: %.0f", simFPS), 10, 30, 20, BLACK);
                 DrawText(TextFormat("Sim Frame Time: %.3f ms", simFrameTimeMs), 10, 50, 20, BLACK);
                 DrawText(TextFormat("Render Frame Time: %.3f ms", renderFrameTimeMs), 10, 70, 20, BLACK);
