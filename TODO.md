@@ -14,14 +14,10 @@
 - [x] Dev controls: F1 toggle overlay, F2 reset, F3 pause, F4 step
 - [x] Player 2: distinct key binds (arrows), different color
 - [x] GameState struct: players[MAX_PLAYERS] + inputBuffer[MAX_PLAYERS]
+- [x] Attack Data System: attacktype enum, startup, active, recovery counts. diff damage, hitboxes, knockback, etc.
+- [x] Hit/Hurtboxes: debug drawing, aabb overlap detection
 
-## Next Steps (Priority Order)
-
-### Hitbox / Hurtbox System
-- Add `struct Rect hitbox` and `struct Rect hurtbox` to Player
-- Draw them as colored overlay rectangles (red = hitbox, blue = hurtbox)
-- Implement AABB vs AABB overlap detection
-- Plan for multiple hit/hurtboxes
+## Next Steps
 
 ### Health System
 - `int health`, `int maxHealth` per player
@@ -29,13 +25,6 @@
 - Flag attacks as "already connected" to prevent multi-hits per swing
     - But Plan for multi-hit attacks
 - Display health bars on screen
-
-### Proper Attack Data System
-- `enum AttackType { LIGHT, MEDIUM, HEAVY }`
-- `struct AttackData` with startup/active/recovery frame counts
-- Attack database per character
-- `startup → active → recovery` phase progression in the state machine
-- Each attack type: different damage, knockback, range, timing
 
 ### Hitstun / Blockstun States
 - Add `STATE_HITSTUN`, `STATE_BLOCK` to the player state machine
