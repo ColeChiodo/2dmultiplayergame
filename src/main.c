@@ -1,9 +1,10 @@
 #include "raylib.h"
 #include <stdio.h>
+#include <math.h>
 
 #define GRAVITY 1800.0f
 #define DT (1.0f / 60.0f)
-#define GROUND_HEIGHT 400
+#define GROUND_HEIGHT 450
 
 #define MAX_PLAYERS 2
 #define INPUT_BUFFER_SIZE 120
@@ -71,12 +72,12 @@ struct Character {
 static struct Character character1 = {
     .name = "Character 1",
     .walkSpeed = 300.0f,
-    .jumpStrength = 700.0f,
-    .width = 50.0f,
-    .height = 100.0f,
+    .jumpStrength = 800.0f,
+    .width = 75.0f,
+    .height = 150.0f,
     .hurtboxes = {
         [0] = {
-            .offsetX = -25.0f, .offsetY = -100.0f, .width = 50.0f, .height = 100.0f,
+            .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f,
         },
     },
     .hurtboxCount = 1,
@@ -90,7 +91,7 @@ static struct Character character1 = {
                     .startFrame = 2, .endFrame = 6,
                     .hitboxCount = 1,
                     .hitboxes = {
-                        [0] = { .rect = { .offsetX = 25.0f, .offsetY = -60.0f, .width = 30.0f, .height = 20.0f } },
+                        [0] = { .rect = { .offsetX = 37.5f, .offsetY = -90.0f, .width = 45.0f, .height = 30.0f } },
                     },
                     .damage = 100,
                     .knockbackX = 100.0f, .knockbackY = 0.0f,
@@ -107,7 +108,7 @@ static struct Character character1 = {
                     .startFrame = 5, .endFrame = 9,
                     .hitboxCount = 1,
                     .hitboxes = {
-                        [0] = { .rect = { .offsetX = 45.0f, .offsetY = -40.0f, .width = 35.0f, .height = 25.0f } },
+                        [0] = { .rect = { .offsetX = 67.5f, .offsetY = -60.0f, .width = 52.5f, .height = 37.5f } },
                     },
                     .damage = 200,
                     .knockbackX = 150.0f, .knockbackY = 0.0f,
@@ -124,7 +125,7 @@ static struct Character character1 = {
                     .startFrame = 8, .endFrame = 17,
                     .hitboxCount = 1,
                     .hitboxes = {
-                        [0] = { .rect = { .offsetX = 50.0f, .offsetY = -30.0f, .width = 40.0f, .height = 30.0f } },
+                        [0] = { .rect = { .offsetX = 75.0f, .offsetY = -45.0f, .width = 60.0f, .height = 45.0f } },
                     },
                     .damage = 400,
                     .knockbackX = 300.0f, .knockbackY = -100.0f,
@@ -449,13 +450,16 @@ void RunOneSimStep(struct GameState* gs) {
 }
 
 int main(void) {
-    const int screenWidth = 800;
-    const int screenHeight = 600;
+    const int screenWidth = 640;
+    const int screenHeight = 480;
 
+    // SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "Cole's Fighting Game");
+
+    RenderTexture2D target = LoadRenderTexture(screenWidth, screenHeight);
 	
-	InitPlayer(&gameState.players[0], 200.0f, GROUND_HEIGHT, &character1);
-    InitPlayer(&gameState.players[1], 600.0f, GROUND_HEIGHT, &character1);
+	InitPlayer(&gameState.players[0], screenWidth / 4.0f, GROUND_HEIGHT, &character1);
+	InitPlayer(&gameState.players[1], screenWidth - (screenWidth / 4.0f), GROUND_HEIGHT, &character1);
 
     double accumulator = 0.0;
     double fpsTimer = 0.0;
@@ -473,8 +477,8 @@ int main(void) {
         // Dev input handling
         if (IsKeyPressed(KEY_F1)) showDebugOverlay = !showDebugOverlay;
         if (IsKeyPressed(KEY_F2)) {
-			InitPlayer(&gameState.players[0], 200.0f, GROUND_HEIGHT, &character1);
-			InitPlayer(&gameState.players[1], 600.0f, GROUND_HEIGHT, &character1);
+			InitPlayer(&gameState.players[0], screenWidth / 4.0f, GROUND_HEIGHT, &character1);
+			InitPlayer(&gameState.players[1], screenWidth - (screenWidth / 4.0f), GROUND_HEIGHT, &character1);
         }
         if (IsKeyPressed(KEY_F3)) paused = !paused;
         if (IsKeyPressed(KEY_F4)) doStep = 1;
@@ -504,61 +508,78 @@ int main(void) {
         }
 
         BeginDrawing();
-            ClearBackground(RAYWHITE);
+            ClearBackground(BLACK);
 
-			DrawRectangle(0, GROUND_HEIGHT, screenWidth, screenHeight, GRAY);
+            float scale = fminf((float)GetScreenWidth() / screenWidth,
+                                (float)GetScreenHeight() / screenHeight);
+            int vx = (GetScreenWidth() - (int)(screenWidth * scale)) / 2;
+            int vy = (GetScreenHeight() - (int)(screenHeight * scale)) / 2;
+            int vw = (int)(screenWidth * scale);
+            int vh = (int)(screenHeight * scale);
 
-            float pw0 = gameState.players[0].character->width;
-            float ph0 = gameState.players[0].character->height;
-            DrawRectangle(gameState.players[0].x - pw0 * 0.5f, gameState.players[0].y - ph0, pw0, ph0, RED);
-            float pw1 = gameState.players[1].character->width;
-            float ph1 = gameState.players[1].character->height;
-			DrawRectangle(gameState.players[1].x - pw1 * 0.5f, gameState.players[1].y - ph1, pw1, ph1, BLUE);
+            BeginTextureMode(target);
+                ClearBackground(RAYWHITE);
 
-            if (paused) {
-				DrawText("PAUSED", screenWidth / 2 - 50, screenHeight / 2 - 10, 30, RED);
-            }
+			    DrawRectangle(0, GROUND_HEIGHT, screenWidth, screenHeight, GRAY);
 
-            if (showDebugOverlay) {
-                for (int pi = 0; pi < MAX_PLAYERS; pi++) {
-                    struct Player* pp = &gameState.players[pi];
-                    struct Character* cc = pp->character;
+                float pw0 = gameState.players[0].character->width;
+                float ph0 = gameState.players[0].character->height;
+                DrawRectangle(gameState.players[0].x - pw0 * 0.5f, gameState.players[0].y - ph0, pw0, ph0, RED);
+                float pw1 = gameState.players[1].character->width;
+                float ph1 = gameState.players[1].character->height;
+			    DrawRectangle(gameState.players[1].x - pw1 * 0.5f, gameState.players[1].y - ph1, pw1, ph1, BLUE);
 
-                    for (int h = 0; h < cc->hurtboxCount; h++) {
-                        struct Rect* r = &cc->hurtboxes[h];
-                        float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
-                        float hy = pp->y + r->offsetY;
-                        DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 0, 0, 255, 80 });
-                    }
+                if (paused) {
+				    DrawText("PAUSED", screenWidth / 2 - 50, screenHeight / 2 - 10, 30, RED);
+                }
 
-                    if (pp->state == STATE_ATTACK) {
-                        struct AttackData* ad = &cc->attacks[pp->attackType];
-                        int totalFrames = ad->startup + ad->active + ad->recovery;
-                        int elapsed = totalFrames - pp->stateTimer;
-                        for (int s = 0; s < ad->stripCount; s++) {
-                            struct HitboxStrip* strip = &ad->strips[s];
-                            if (elapsed >= strip->startFrame && elapsed <= strip->endFrame) {
-                                for (int b = 0; b < strip->hitboxCount; b++) {
-                                    struct Rect* r = &strip->hitboxes[b].rect;
-                                    float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
-                                    float hy = pp->y + r->offsetY;
-                                    DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 0, 0, 80 });
+                if (showDebugOverlay) {
+                    for (int pi = 0; pi < MAX_PLAYERS; pi++) {
+                        struct Player* pp = &gameState.players[pi];
+                        struct Character* cc = pp->character;
+
+                        for (int h = 0; h < cc->hurtboxCount; h++) {
+                            struct Rect* r = &cc->hurtboxes[h];
+                            float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
+                            float hy = pp->y + r->offsetY;
+                            DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 0, 0, 255, 80 });
+                        }
+
+                        if (pp->state == STATE_ATTACK) {
+                            struct AttackData* ad = &cc->attacks[pp->attackType];
+                            int totalFrames = ad->startup + ad->active + ad->recovery;
+                            int elapsed = totalFrames - pp->stateTimer;
+                            for (int s = 0; s < ad->stripCount; s++) {
+                                struct HitboxStrip* strip = &ad->strips[s];
+                                if (elapsed >= strip->startFrame && elapsed <= strip->endFrame) {
+                                    for (int b = 0; b < strip->hitboxCount; b++) {
+                                        struct Rect* r = &strip->hitboxes[b].rect;
+                                        float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
+                                        float hy = pp->y + r->offsetY;
+                                        DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 0, 0, 80 });
+                                    }
                                 }
                             }
                         }
                     }
+
+                    DrawText(TextFormat("Frame: %d", gameState.currentFrame), 10, 10, 20, BLACK);
+                    DrawText(TextFormat("Sim FPS: %.0f", simFPS), 10, 30, 20, BLACK);
+                    DrawText(TextFormat("Sim Frame Time: %.3f ms", simFrameTimeMs), 10, 50, 20, BLACK);
+                    DrawText(TextFormat("Render Frame Time: %.3f ms", renderFrameTimeMs), 10, 70, 20, BLACK);
+
+                    DrawText("[F1] Debug  [F2] Reset  [F3] Pause  [F4] Step", 10, screenHeight - 20, 15, BLACK);
                 }
+            EndTextureMode();
 
-                DrawText(TextFormat("Frame: %d", gameState.currentFrame), 10, 10, 20, BLACK);
-                DrawText(TextFormat("Sim FPS: %.0f", simFPS), 10, 30, 20, BLACK);
-                DrawText(TextFormat("Sim Frame Time: %.3f ms", simFrameTimeMs), 10, 50, 20, BLACK);
-                DrawText(TextFormat("Render Frame Time: %.3f ms", renderFrameTimeMs), 10, 70, 20, BLACK);
-
-                DrawText("[F1] Debug  [F2] Reset  [F3] Pause  [F4] Step", 10, screenHeight - 30, 15, BLACK);
-            }
+            DrawTexturePro(target.texture,
+                           (Rectangle){ 0, 0, screenWidth, -screenHeight },
+                           (Rectangle){ vx, vy, vw, vh },
+                           (Vector2){ 0, 0 }, 0.0f, WHITE);
         EndDrawing();
     }
 
+    UnloadRenderTexture(target);
     CloseWindow();
 
     return 0;
