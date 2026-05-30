@@ -12,10 +12,8 @@ sudo pacman -S raylib cmake base-devel
 ## Build the Game
 I use CMake to build the game.
 ```bash
-# Set CMake source and build directory
-cmake -B build
-# Build the Project
-cmake --build build
+# Set CMake source and build
+cmake -B build & cmake --build build
 # Run The Game
 ./build/main
 ```
