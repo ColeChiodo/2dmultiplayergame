@@ -20,6 +20,10 @@
 #define MAX_HITBOXES 4
 #define MAX_HITBOX_STRIPS 8
 #define MAX_HITBOXES_PER_STRIP 4
+#define MAX_COLLISION_BOXES 4
+#define MAX_COLLISION_BOXES_PER_STRIP 4
+#define MAX_COLLISION_STRIPS 8
+#define MAX_HURTBOX_STRIPS 8
 
 struct InputState {
     bool left;
@@ -51,6 +55,26 @@ struct Hitbox {
     struct Rect rect;
 };
 
+struct CollisionBox {
+    struct Rect rect;
+};
+
+struct AnimationStrip {
+    int startFrame;
+    int endFrame;
+    int collisionBoxCount;
+    struct CollisionBox collisionBoxes[MAX_COLLISION_BOXES_PER_STRIP];
+    int hurtboxCount;
+    struct Rect hurtboxes[MAX_HURTBOXES];
+};
+
+#define MAX_ANIMATION_STRIPS 8
+
+struct AnimationStrips {
+    int stripCount;
+    struct AnimationStrip strips[MAX_ANIMATION_STRIPS];
+};
+
 struct HitboxStrip {
     int startFrame;
     int endFrame;
@@ -64,10 +88,11 @@ struct HitboxStrip {
 enum AttackType { ATTACK_LIGHT, ATTACK_MEDIUM, ATTACK_HEAVY, ATTACK_COUNT };
 
 struct AttackData {
-	int startup, active, recovery;
-	struct HitboxStrip strips[MAX_HITBOX_STRIPS];
+    int startup, active, recovery;
+    struct HitboxStrip strips[MAX_HITBOX_STRIPS];
     int stripCount;
-	float moveX, moveY;
+    struct AnimationStrips animStrips;
+    float moveX, moveY;
 };
 
 struct Character {
@@ -76,8 +101,9 @@ struct Character {
     float jumpStrength;
     float width;
     float height;
-	struct Rect hurtboxes[MAX_HURTBOXES];
-    int hurtboxCount;
+    struct AnimationStrips idleStrips;
+    struct AnimationStrips walkStrips;
+    struct AnimationStrips jumpStrips;
     struct AttackData attacks[ATTACK_COUNT];
 };
 
@@ -87,12 +113,54 @@ static struct Character character1 = {
     .jumpStrength = 800.0f,
     .width = 75.0f,
     .height = 150.0f,
-    .hurtboxes = {
-        [0] = {
-            .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f,
+    .idleStrips = {
+        .stripCount = 1,
+        .strips = {
+            [0] = {
+                .startFrame = 0, .endFrame = 0,
+                .collisionBoxCount = 1,
+                .collisionBoxes = {
+                    [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                },
+                .hurtboxCount = 1,
+                .hurtboxes = {
+                    [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                },
+            },
         },
     },
-    .hurtboxCount = 1,
+    .walkStrips = {
+        .stripCount = 1,
+        .strips = {
+            [0] = {
+                .startFrame = 0, .endFrame = 0,
+                .collisionBoxCount = 1,
+                .collisionBoxes = {
+                    [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                },
+                .hurtboxCount = 1,
+                .hurtboxes = {
+                    [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                },
+            },
+        },
+    },
+    .jumpStrips = {
+        .stripCount = 1,
+        .strips = {
+            [0] = {
+                .startFrame = 0, .endFrame = 0,
+                .collisionBoxCount = 1,
+                .collisionBoxes = {
+                    [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                },
+                .hurtboxCount = 1,
+                .hurtboxes = {
+                    [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                },
+            },
+        },
+    },
     .attacks = {
         [ATTACK_LIGHT] = {
             .startup = 2, .active = 5, .recovery = 3,
@@ -108,6 +176,22 @@ static struct Character character1 = {
                     .damage = 100,
                     .knockbackX = 100.0f, .knockbackY = 0.0f,
                     .hitstun = 10,
+                },
+            },
+            .animStrips = {
+                .stripCount = 1,
+                .strips = {
+                    [0] = {
+                        .startFrame = 0, .endFrame = 9,
+                        .collisionBoxCount = 1,
+                        .collisionBoxes = {
+                            [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                        },
+                        .hurtboxCount = 1,
+                        .hurtboxes = {
+                            [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                        },
+                    },
                 },
             },
         },
@@ -127,6 +211,22 @@ static struct Character character1 = {
                     .hitstun = 15,
                 },
             },
+            .animStrips = {
+                .stripCount = 1,
+                .strips = {
+                    [0] = {
+                        .startFrame = 0, .endFrame = 17,
+                        .collisionBoxCount = 1,
+                        .collisionBoxes = {
+                            [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                        },
+                        .hurtboxCount = 1,
+                        .hurtboxes = {
+                            [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                        },
+                    },
+                },
+            },
         },
         [ATTACK_HEAVY] = {
             .startup = 8, .active = 10, .recovery = 10,
@@ -142,6 +242,22 @@ static struct Character character1 = {
                     .damage = 400,
                     .knockbackX = 300.0f, .knockbackY = -100.0f,
                     .hitstun = 25,
+                },
+            },
+            .animStrips = {
+                .stripCount = 1,
+                .strips = {
+                    [0] = {
+                        .startFrame = 0, .endFrame = 27,
+                        .collisionBoxCount = 1,
+                        .collisionBoxes = {
+                            [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                        },
+                        .hurtboxCount = 1,
+                        .hurtboxes = {
+                            [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                        },
+                    },
                 },
             },
         },
@@ -177,6 +293,118 @@ static void WorldRect(struct Player* p, struct Rect* r, float* outX, float* outY
     *outY = p->y + r->offsetY;
 }
 
+static struct AnimationStrips* GetCurrentAnimStrips(struct Player* p) {
+    switch (p->state) {
+        case STATE_IDLE:   return &p->character->idleStrips;
+        case STATE_WALK:   return &p->character->walkStrips;
+        case STATE_JUMP:   return &p->character->jumpStrips;
+        case STATE_ATTACK: return &p->character->attacks[p->attackType].animStrips;
+    }
+    return NULL;
+}
+
+static int GetCurrentAnimFrame(struct Player* p) {
+    if (p->state == STATE_ATTACK) {
+        struct AttackData* ad = &p->character->attacks[p->attackType];
+        int total = ad->startup + ad->active + ad->recovery;
+        return total - p->stateTimer;
+    }
+    return 0;
+}
+
+static int GetActiveCollisionBoxes(struct Player* p, struct CollisionBox* outBoxes, int maxOut) {
+    struct AnimationStrips* anim = GetCurrentAnimStrips(p);
+    if (!anim) return 0;
+
+    int frame = GetCurrentAnimFrame(p);
+    int count = 0;
+    for (int s = 0; s < anim->stripCount && count < maxOut; s++) {
+        struct AnimationStrip* strip = &anim->strips[s];
+        if (frame >= strip->startFrame && frame <= strip->endFrame) {
+            for (int b = 0; b < strip->collisionBoxCount && count < maxOut; b++) {
+                outBoxes[count++] = strip->collisionBoxes[b];
+            }
+        }
+    }
+    return count;
+}
+
+static int GetActiveHurtboxes(struct Player* p, struct Rect* outBoxes, int maxOut) {
+    struct AnimationStrips* anim = GetCurrentAnimStrips(p);
+    if (!anim) return 0;
+
+    int frame = GetCurrentAnimFrame(p);
+    int count = 0;
+    for (int s = 0; s < anim->stripCount && count < maxOut; s++) {
+        struct AnimationStrip* strip = &anim->strips[s];
+        if (frame >= strip->startFrame && frame <= strip->endFrame) {
+            for (int h = 0; h < strip->hurtboxCount && count < maxOut; h++) {
+                outBoxes[count++] = strip->hurtboxes[h];
+            }
+        }
+    }
+    return count;
+}
+
+static void GetCollisionHull(struct Player* p, float* outMinX, float* outMinY, float* outMaxX, float* outMaxY) {
+    struct CollisionBox boxes[MAX_COLLISION_BOXES];
+    int count = GetActiveCollisionBoxes(p, boxes, MAX_COLLISION_BOXES);
+
+    if (count == 0) {
+        *outMinX = p->x - p->character->width * 0.5f;
+        *outMinY = p->y - p->character->height;
+        *outMaxX = p->x + p->character->width * 0.5f;
+        *outMaxY = p->y;
+        return;
+    }
+
+    *outMinX = INFINITY;
+    *outMinY = INFINITY;
+    *outMaxX = -INFINITY;
+    *outMaxY = -INFINITY;
+
+    for (int i = 0; i < count; i++) {
+        float wx, wy;
+        WorldRect(p, &boxes[i].rect, &wx, &wy);
+        float wr = wx + boxes[i].rect.width;
+        float wb = wy + boxes[i].rect.height;
+        if (wx < *outMinX) *outMinX = wx;
+        if (wy < *outMinY) *outMinY = wy;
+        if (wr > *outMaxX) *outMaxX = wr;
+        if (wb > *outMaxY) *outMaxY = wb;
+    }
+}
+
+static void ResolvePlayerCollision(struct Player* p0, struct Player* p1) {
+    float min0x, min0y, max0x, max0y;
+    float min1x, min1y, max1x, max1y;
+
+    GetCollisionHull(p0, &min0x, &min0y, &max0x, &max0y);
+    GetCollisionHull(p1, &min1x, &min1y, &max1x, &max1y);
+
+    if (min0x < max1x && max0x > min1x && min0y < max1y && max0y > min1y) {
+        float overlapX = fminf(max0x - min1x, max1x - min0x);
+        float push = overlapX * 0.5f;
+
+        float dir;
+        if (min0x < min1x) {
+            dir = -1.0f;
+        } else if (min0x > min1x) {
+            dir = 1.0f;
+        } else {
+            float stageCenter = (STAGE_LEFT + STAGE_RIGHT) * 0.5f;
+            if (p0->y < p1->y) {
+                dir = (p0->x < stageCenter) ? 1.0f : -1.0f;
+            } else {
+                dir = (p1->x < stageCenter) ? -1.0f : 1.0f;
+            }
+        }
+
+        p0->x += dir * push;
+        p1->x -= dir * push;
+    }
+}
+
 struct GameInput {
 	struct InputState players[MAX_PLAYERS];
 };
@@ -207,7 +435,7 @@ static struct InputHistoryEntry historyP2[INPUT_HISTORY_SIZE] = {0};
 static int historyCountP1 = 0;
 static int historyCountP2 = 0;
 static bool showInputP1 = true;
-static bool showInputP2 = true;
+static bool showInputP2 = false;
 
 void InitGameState();
 void InitPlayer(struct Player* p, float x, float y, struct Character* c);
@@ -469,11 +697,13 @@ void RunOneSimStep(struct GameState* gs) {
 	            float aw = strip->hitboxes[h].rect.width;
 	            float ah = strip->hitboxes[h].rect.height;
 
-	            for (int hb = 0; hb < defender->character->hurtboxCount; hb++) {
+                struct Rect defenderHurtboxes[MAX_HURTBOXES];
+                int defenderHurtboxCount = GetActiveHurtboxes(defender, defenderHurtboxes, MAX_HURTBOXES);
+	            for (int hb = 0; hb < defenderHurtboxCount; hb++) {
 	                float dx, dy;
-	                WorldRect(defender, &defender->character->hurtboxes[hb], &dx, &dy);
-	                float dw = defender->character->hurtboxes[hb].width;
-	                float dh = defender->character->hurtboxes[hb].height;
+	                WorldRect(defender, &defenderHurtboxes[hb], &dx, &dy);
+	                float dw = defenderHurtboxes[hb].width;
+	                float dh = defenderHurtboxes[hb].height;
 
 	                if (AABB(ax, ay, aw, ah, dx, dy, dw, dh)) {
 	                    attacker->hitConnected[s] = true;
@@ -488,6 +718,16 @@ void RunOneSimStep(struct GameState* gs) {
 	        next_strip:;
 	    }
 	}
+
+    ResolvePlayerCollision(&gs->players[0], &gs->players[1]);
+
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        struct Player* p = &gs->players[i];
+        float halfW = p->character->width * 0.5f;
+        if (p->x < STAGE_LEFT + halfW) p->x = STAGE_LEFT + halfW;
+        if (p->x > STAGE_RIGHT - halfW) p->x = STAGE_RIGHT - halfW;
+        if (p->y > GROUND_HEIGHT) p->y = GROUND_HEIGHT;
+    }
 
     float dx = gs->players[0].x - gs->players[1].x;
     float dist = fabsf(dx);
@@ -570,7 +810,7 @@ int main(void) {
 	
 	Camera2D camera = { 0 };
 	camera.offset = (Vector2){ SCREEN_WIDTH / 2.0f, SCREEN_HEIGHT / 2.0f };
-	camera.target = 
+	camera.target = (Vector2){ (gameState.players[0].x + gameState.players[1].x) / 2, SCREEN_HEIGHT / 2.0f };
 	camera.zoom = 1.0f;
 
     while (!WindowShouldClose()) {
@@ -625,7 +865,7 @@ int main(void) {
 		// Lerp
 		Vector2 desiredTarget = { midpointX, 450.0f - 210.0f / desiredZoom };
 
-		float smoothSpeed = 5.0f;
+		float smoothSpeed = 2.0f;
 		float t = 1.0f - expf(-smoothSpeed * GetFrameTime());
 		camera.target.x += (desiredTarget.x - camera.target.x) * t;
 		camera.target.y += (desiredTarget.y - camera.target.y) * t;
@@ -681,13 +921,33 @@ int main(void) {
                     	    struct Player* pp = &gameState.players[pi];
                     	    struct Character* cc = pp->character;
 
-                    	    for (int h = 0; h < cc->hurtboxCount; h++) {
-                    	        struct Rect* r = &cc->hurtboxes[h];
-                    	        float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
-                    	        float hy = pp->y + r->offsetY;
-                    	        DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 0, 0, 255, 80 });
+                    	    // Hurtboxes (green)
+                    	    {
+                    	        struct Rect hurtboxes[MAX_HURTBOXES];
+                    	        int hurtboxCount = GetActiveHurtboxes(pp, hurtboxes, MAX_HURTBOXES);
+                    	        for (int h = 0; h < hurtboxCount; h++) {
+                    	            struct Rect* r = &hurtboxes[h];
+                    	            float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
+                    	            float hy = pp->y + r->offsetY;
+                    	            DrawRectangleLines((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 0, 255, 0, 255 });
+                    	            DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 0, 255, 0, 80 });
+                    	        }
                     	    }
 
+                    	    // Collision boxes (yellow)
+                    	    {
+                    	        struct CollisionBox boxes[MAX_COLLISION_BOXES];
+                    	        int boxCount = GetActiveCollisionBoxes(pp, boxes, MAX_COLLISION_BOXES);
+                    	        for (int b = 0; b < boxCount; b++) {
+                    	            struct Rect* r = &boxes[b].rect;
+                    	            float hx, hy;
+                    	            WorldRect(pp, r, &hx, &hy);
+                    	            DrawRectangleLines((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 255, 0, 255 });
+                    	            DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 255, 0, 60 });
+                    	        }
+                    	    }
+
+                    	    // Hitboxes (red) - only during attack
                     	    if (pp->state == STATE_ATTACK) {
                     	        struct AttackData* ad = &cc->attacks[pp->attackType];
                     	        int totalFrames = ad->startup + ad->active + ad->recovery;
@@ -699,7 +959,8 @@ int main(void) {
                     	                    struct Rect* r = &strip->hitboxes[b].rect;
                     	                    float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
                     	                    float hy = pp->y + r->offsetY;
-                    	                    DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 0, 0, 80 });
+                    	                    DrawRectangleLines((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 0, 0, 255 });
+											DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 0, 0, 80 });
                     	                }
                     	            }
                     	        }
