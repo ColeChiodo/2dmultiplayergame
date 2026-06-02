@@ -20,7 +20,9 @@
 - [x] Camera2D: zooms out when players are further. clamped to stage limits
 - [x] Collision Boxes: players push each other. cannot cross
 - [x] Start of Animation Strips: per anim frame collision and hurt boxes
-- [ ] Health System: health/maxhealth, on hit/hurtbox collision, subtract dmg, simple healthbar, 
+- [ ] Health System: health/maxhealth, on hit/hurtbox collision, subtract dmg, simple healthbar, KO when hp=0
+- [x] Hitstun: hit player cant act for x frames
+- [x] Debug State Timeline: visual display of each players current state on a timeline
 
 ## Next Steps
 
@@ -28,11 +30,6 @@
 
 #### Health System
 - KO when health reaches 0
-
-#### Hitstun
-- Add `STATE_HITSTUN` to the player state machine
-- On hit: victim enters hitstun (can't act for X frames)
-- *Without this, landing a hit has no observable effect*
 
 #### Blocking
 - Hold back (← or → depending on facing) to block mids/highs
