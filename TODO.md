@@ -18,17 +18,15 @@
 - [x] Hit/Hurtboxes: debug drawing, aabb overlap detection
 - [x] On-screen input display (live + history)
 - [x] Camera2D: zooms out when players are further. clamped to stage limits
+- [x] Collision Boxes: players push each other. cannot cross
+- [x] Start of Animation Strips: per anim frame collision and hurt boxes
+- [ ] Health System: health/maxhealth, on hit/hurtbox collision, subtract dmg, simple healthbar, 
 
 ## Next Steps
 
 ### Working Combat
 
 #### Health System
-- `int health`, `int maxHealth` per player
-- On hitbox/hurtbox collision, subtract damage
-- Flag attacks as "already connected" to prevent multi-hits per swing
-    - But plan for multi-hit attacks
-- Display health bars on screen
 - KO when health reaches 0
 
 #### Hitstun

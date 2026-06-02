@@ -80,7 +80,7 @@ struct HitboxStrip {
     int endFrame;
     int hitboxCount;
     struct Hitbox hitboxes[MAX_HITBOXES_PER_STRIP];
-    int damage;
+    float damage;
     float knockbackX, knockbackY;
     int hitstun;
 };
@@ -101,6 +101,7 @@ struct Character {
     float jumpStrength;
     float width;
     float height;
+	float maxHealth;
     struct AnimationStrips idleStrips;
     struct AnimationStrips walkStrips;
     struct AnimationStrips jumpStrips;
@@ -113,6 +114,7 @@ static struct Character character1 = {
     .jumpStrength = 800.0f,
     .width = 75.0f,
     .height = 150.0f,
+	.maxHealth = 10000.0f,
     .idleStrips = {
         .stripCount = 1,
         .strips = {
@@ -285,6 +287,8 @@ struct Player {
 	int attackType;
     int attackFrame;
 
+	float health;
+
 	bool hitConnected[MAX_HITBOX_STRIPS];
 };
 
@@ -423,6 +427,7 @@ struct SaveState {
     enum PlayerState state;
     int stateTimer;
     int attackType;
+    float health;
     bool hitConnected[MAX_HITBOX_STRIPS];
 };
 
@@ -456,6 +461,7 @@ void SavePlayerState(const struct Player* player, struct SaveState* save) {
     save->state = player->state;
     save->stateTimer = player->stateTimer;
     save->attackType = player->attackType;
+    save->health = player->health;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         save->hitConnected[i] = player->hitConnected[i];
     }
@@ -471,6 +477,7 @@ void RestorePlayerState(struct Player* player, const struct SaveState* save) {
     player->state = save->state;
     player->stateTimer = save->stateTimer;
     player->attackType = save->attackType;
+    player->health = save->health;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         player->hitConnected[i] = save->hitConnected[i];
     }
@@ -488,6 +495,7 @@ void InitPlayer(struct Player* player, float x, float y, struct Character* chara
     player->stateTimer = 0;
     player->attackType = ATTACK_LIGHT;
     player->attackFrame = 0;
+	player->health = character->maxHealth;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         player->hitConnected[i] = false;
     }
@@ -708,8 +716,10 @@ void RunOneSimStep(struct GameState* gs) {
 	                if (AABB(ax, ay, aw, ah, dx, dy, dw, dh)) {
 	                    attacker->hitConnected[s] = true;
 
-						printf("TODO: apply damage, knockback, hitstun here\n");
+						printf("Player %d hit Player %d:\n\t%.0f - %.0f = %.0f\n", opponent + 1, i + 1, defender->health, ad->strips[s].damage, defender->health - ad->strips[s].damage);
 						fflush(stdout);
+
+						defender->health -= ad->strips[s].damage;
 
 	                    goto next_strip;	
 					}
@@ -745,6 +755,37 @@ void RunOneSimStep(struct GameState* gs) {
     gs->currentFrame++;
     double stepEnd = GetTime();
     simFrameTimeMs = (float)((stepEnd - stepStart) * 1000.0);
+}
+
+static void DrawHealthBars(struct GameState* gs, bool showNumbers) {
+    int barWidth = 200;
+    int barHeight = 20;
+    int barY = 10;
+
+    int p1BarX = 20;
+    int p2BarX = SCREEN_WIDTH - 20 - barWidth;
+
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        struct Player* p = &gs->players[i];
+        float ratio = p->health / p->character->maxHealth;
+        if (ratio < 0.0f) ratio = 0.0f;
+
+        Color fg = i == 0 ? RED : BLUE;
+        int bx = i == 0 ? p1BarX : p2BarX;
+
+        DrawRectangle(bx, barY, barWidth, barHeight, DARKGRAY);
+        if (i == 0) {
+            DrawRectangle(bx + barWidth - (int)(barWidth * ratio), barY, (int)(barWidth * ratio), barHeight, fg);
+        } else {
+            DrawRectangle(bx, barY, (int)(barWidth * ratio), barHeight, fg);
+        }
+        DrawRectangleLines(bx, barY, barWidth, barHeight, WHITE);
+
+        if (showNumbers) {
+            DrawText(TextFormat("%.0f / %.0f", p->health, p->character->maxHealth),
+                     bx + 4, barY + 2, 14, WHITE);
+        }
+    }
 }
 
 static void DrawCurrentInput(struct InputState state, int x, int y, bool isP1) {
@@ -910,6 +951,8 @@ int main(void) {
 
 				EndMode2D();
 
+                DrawHealthBars(&gameState, showDebugOverlay);
+
                 if (paused) {
 				    DrawText("PAUSED", SCREEN_WIDTH / 2 - 50, SCREEN_HEIGHT / 2 - 10, 30, RED);
                 }
@@ -969,12 +1012,12 @@ int main(void) {
 
 					EndMode2D();
 
-                    DrawText(TextFormat("Frame: %d", gameState.currentFrame), 10, 10, 20, BLACK);
-                    DrawText(TextFormat("Sim FPS: %.0f", simFPS), 10, 30, 20, BLACK);
-                    DrawText(TextFormat("Sim Frame Time: %.3f ms", simFrameTimeMs), 10, 50, 20, BLACK);
-                    DrawText(TextFormat("Render Frame Time: %.3f ms", renderFrameTimeMs), 10, 70, 20, BLACK);
-					DrawText(TextFormat("Player[0]: (%.0f,%.0f)", gameState.players[0].x, gameState.players[0].y), 10, 90, 20, BLACK);
-					DrawText(TextFormat("Player[1]: (%.0f,%.0f)", gameState.players[1].x, gameState.players[1].y), 10, 110, 20, BLACK);
+                    DrawText(TextFormat("Frame: %d", gameState.currentFrame), 10, 45, 20, BLACK);
+                    DrawText(TextFormat("Sim FPS: %.0f", simFPS), 10, 65, 20, BLACK);
+                    DrawText(TextFormat("Sim Frame Time: %.3f ms", simFrameTimeMs), 10, 85, 20, BLACK);
+                    DrawText(TextFormat("Render Frame Time: %.3f ms", renderFrameTimeMs), 10, 105, 20, BLACK);
+					DrawText(TextFormat("Player[0]: (%.0f,%.0f)", gameState.players[0].x, gameState.players[0].y), 10, 125, 20, BLACK);
+					DrawText(TextFormat("Player[1]: (%.0f,%.0f)", gameState.players[1].x, gameState.players[1].y), 10, 145, 20, BLACK);
 
                     int inputY = SCREEN_HEIGHT - 10;
                     if (showInputP1) {
