@@ -23,6 +23,7 @@
 - [ ] Health System: health/maxhealth, on hit/hurtbox collision, subtract dmg, simple healthbar, KO when hp=0
 - [x] Hitstun: hit player cant act for x frames
 - [x] Debug State Timeline: visual display of each players current state on a timeline
+- [x] Auto face opponent
 
 ## Next Steps
 

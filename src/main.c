@@ -468,7 +468,7 @@ static enum DispState stateHistoryP2[STATE_HISTORY_SIZE];
 
 void InitGameState();
 void InitPlayer(struct Player* p, float x, float y, struct Character* c);
-void GameStep(struct Player* p, const struct InputState* input, const struct InputState* prevInput);
+void GameStep(struct Player* p, const struct Player* other, const struct InputState* input, const struct InputState* prevInput);
 void SavePlayerState(const struct Player* p, struct SaveState* save);
 void RestorePlayerState(struct Player* p, const struct SaveState* save);
 struct InputState GatherInputs(void);
@@ -525,7 +525,7 @@ void InitPlayer(struct Player* player, float x, float y, struct Character* chara
     }
 }
 
-void GameStep(struct Player* player, const struct InputState* input, const struct InputState* prevInput) {
+void GameStep(struct Player* player, const struct Player* other, const struct InputState* input, const struct InputState* prevInput) {
     int dirX = 0;
     if (input->left && !input->right) {
         dirX = -1;
@@ -533,8 +533,13 @@ void GameStep(struct Player* player, const struct InputState* input, const struc
         dirX = 1;
     }
 
-    if (dirX != 0) {
-        player->facingRight = (dirX > 0);
+    if (player->grounded && (player->state == STATE_IDLE || player->state == STATE_WALK)) {
+        float dx = other->x - player->x;
+        if (dx > 0) {
+            player->facingRight = true;
+        } else if (dx < 0) {
+            player->facingRight = false;
+        }
     }
 
     bool lightPressed = input->light && !prevInput->light;
@@ -720,7 +725,9 @@ void RunOneSimStep(struct GameState* gs) {
     double stepStart = GetTime();
 
     for (int i = 0; i < MAX_PLAYERS; i++) {
+        int opponent = (i == 0) ? 1 : 0;
         GameStep(&gs->players[i],
+                 &gs->players[opponent],
                  &gs->inputBuffer[index].players[i],
                  &prevFrame->players[i]);
     }
