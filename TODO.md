@@ -24,6 +24,8 @@
 - [x] Hitstun: hit player cant act for x frames
 - [x] Debug State Timeline: visual display of each players current state on a timeline
 - [x] Auto face opponent
+- [x] STATE_CROUCH: crouch on holding 2. framework for crouch attacks.
+- [ ] STATE_BLOCK: block attacks. added bools overhead and low on attacks. 
 
 ## Next Steps
 
@@ -33,11 +35,8 @@
 - KO when health reaches 0
 
 #### Blocking
-- Hold back (← or → depending on facing) to block mids/highs
-- Hold down-back to block lows
-- Add `STATE_BLOCKSTUN` to state machine
-- On block: reduced or zero damage, shorter stun than hitstun
-- Chip damage on blocked specials (optional)
+- Chip damage on blocked specials 
+- Tune Airblock Behavior
 
 #### Knockdown + Wake-up
 - On certain attacks (e.g. heavy), force a hard knockdown
