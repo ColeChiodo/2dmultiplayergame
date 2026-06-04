@@ -78,8 +78,8 @@ struct AnimationStrips {
 
 struct HitboxStrip {
     int startFrame, endFrame;
-    struct Hitbox hitboxes[MAX_HITBOXES_PER_STRIP];
 	int hitboxCount;
+    struct Hitbox hitboxes[MAX_HITBOXES_PER_STRIP];
     float damage;
     float knockbackX, knockbackY;
 	float blockKnockbackX, blockKnockbackY;
@@ -111,8 +111,19 @@ struct AttackData {
     int startup, active, recovery;
     struct HitboxStrip strips[MAX_HITBOX_STRIPS];
     int stripCount;
-    struct AnimationStrips animStrips;
+    struct AnimationStrips animations;
     float moveX, moveY;
+};
+
+struct AnimationSet {
+    struct AnimationStrips idle;
+    struct AnimationStrips walk;
+    struct AnimationStrips crouch;
+    struct AnimationStrips jump;
+    struct AnimationStrips blockstun;
+    struct AnimationStrips crouchBlockstun;
+    struct AnimationStrips hitstun;
+    struct AnimationStrips crouchHitstun;
 };
 
 struct Character {
@@ -122,10 +133,7 @@ struct Character {
     float width;
     float height;
 	float maxHealth;
-    struct AnimationStrips idleStrips;
-    struct AnimationStrips walkStrips;
-	struct AnimationStrips crouchStrips;
-    struct AnimationStrips jumpStrips;
+    struct AnimationSet animations;
     struct AttackData attacks[ATTACK_COUNT];
 };
 
@@ -136,69 +144,75 @@ static struct Character character1 = {
     .width = 75.0f,
     .height = 150.0f,
 	.maxHealth = 10000.0f,
-    .idleStrips = {
-        .stripCount = 1,
-        .strips = {
-            [0] = {
-                .startFrame = 0, .endFrame = 0,
-                .collisionBoxCount = 1,
-                .collisionBoxes = {
-                    [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
-                },
-                .hurtboxCount = 1,
-                .hurtboxes = {
-                    [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
-                },
-            },
-        },
-    },
-    .walkStrips = {
-        .stripCount = 1,
-        .strips = {
-            [0] = {
-                .startFrame = 0, .endFrame = 0,
-                .collisionBoxCount = 1,
-                .collisionBoxes = {
-                    [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
-                },
-                .hurtboxCount = 1,
-                .hurtboxes = {
-                    [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+    .animations = {
+        .idle = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                    },
                 },
             },
         },
-    },
-	.crouchStrips = {
-        .stripCount = 1,
-        .strips = {
-            [0] = {
-                .startFrame = 0, .endFrame = 0,
-                .collisionBoxCount = 1,
-                .collisionBoxes = {
-                    [0] = { .rect = { .offsetX = -22.0f, .offsetY = -75.0f, .width = 44.0f, .height = 75.0f } },
-                },
-                .hurtboxCount = 1,
-                .hurtboxes = {
-                    [0] = { .offsetX = -37.5f, .offsetY = -75.0f, .width = 75.0f, .height = 75.0f },
-                },
-            },
-        },
-    },
-    .jumpStrips = {
-        .stripCount = 1,
-        .strips = {
-            [0] = {
-                .startFrame = 0, .endFrame = 0,
-                .collisionBoxCount = 1,
-                .collisionBoxes = {
-                    [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
-                },
-                .hurtboxCount = 1,
-                .hurtboxes = {
-                    [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+        .walk = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                    },
                 },
             },
         },
+        .crouch = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -75.0f, .width = 44.0f, .height = 75.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -75.0f, .width = 75.0f, .height = 75.0f },
+                    },
+                },
+            },
+        },
+        .jump = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                    },
+                },
+            },
+        },
+        .blockstun = {0},
+        .crouchBlockstun = {0},
+        .hitstun = {0},
+        .crouchHitstun = {0},
     },
     .attacks = {
         [ATTACK_LIGHT] = {
@@ -221,7 +235,7 @@ static struct Character character1 = {
 					.overhead = false,
                 },
             },
-            .animStrips = {
+            .animations = {
                 .stripCount = 1,
                 .strips = {
                     [0] = {
@@ -258,7 +272,7 @@ static struct Character character1 = {
 					.overhead = false,
                 },
             },
-            .animStrips = {
+            .animations = {
                 .stripCount = 1,
                 .strips = {
                     [0] = {
@@ -295,7 +309,7 @@ static struct Character character1 = {
 					.overhead = false,
                 },
             },
-            .animStrips = {
+            .animations = {
                 .stripCount = 1,
                 .strips = {
                     [0] = {
@@ -364,15 +378,20 @@ static void WorldRect(struct Player* p, struct Rect* r, float* outX, float* outY
 
 static struct AnimationStrips* GetCurrentAnimStrips(struct Player* p) {
     switch (p->state) {
-        case STATE_IDLE:   return &p->character->idleStrips;
-        case STATE_WALK:   return &p->character->walkStrips;
-		case STATE_CROUCH: return &p->character->crouchStrips;
-        case STATE_JUMP:   return &p->character->jumpStrips;
-        case STATE_ATTACK: return &p->character->attacks[p->attackType].animStrips;
-		case STATE_HITSTUN:
-		case STATE_BLOCKSTUN:
-			if (p->stunAnimState == 1) return &p->character->crouchStrips;
-			return &p->character->idleStrips;
+        case STATE_IDLE:   return &p->character->animations.idle;
+        case STATE_WALK:   return &p->character->animations.walk;
+        case STATE_CROUCH: return &p->character->animations.crouch;
+        case STATE_JUMP:   return &p->character->animations.jump;
+        case STATE_ATTACK: return &p->character->attacks[p->attackType].animations;
+        case STATE_BLOCK:
+            if (p->stunAnimState == 1) return &p->character->animations.crouch;
+            return &p->character->animations.idle;
+        case STATE_HITSTUN:
+            if (p->stunAnimState == 1) return &p->character->animations.crouchHitstun;
+            return &p->character->animations.hitstun;
+        case STATE_BLOCKSTUN:
+            if (p->stunAnimState == 1) return &p->character->animations.crouchBlockstun;
+            return &p->character->animations.blockstun;
     }
     return NULL;
 }
@@ -742,7 +761,13 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
             }
 
 			break;
-    }
+		case STATE_BLOCK:
+		    player->stunAnimState = input->down ? 1 : 0;
+			// TODO: transition when block is released
+			break;
+		default:
+			break;
+	}
 
     if (!player->grounded) {
         player->velocityY += GRAVITY * DT;
