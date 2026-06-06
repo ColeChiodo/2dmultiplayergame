@@ -209,10 +209,70 @@ static struct Character character1 = {
                 },
             },
         },
-        .blockstun = {0},
-        .crouchBlockstun = {0},
-        .hitstun = {0},
-        .crouchHitstun = {0},
+        .blockstun = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                    },
+                },
+            },
+        },
+        .crouchBlockstun = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -75.0f, .width = 44.0f, .height = 75.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -75.0f, .width = 75.0f, .height = 75.0f },
+                    },
+                },
+            },
+        },
+        .hitstun = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                    },
+                },
+            },
+        },
+        .crouchHitstun = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -75.0f, .width = 44.0f, .height = 75.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -75.0f, .width = 75.0f, .height = 75.0f },
+                    },
+                },
+            },
+        },
     },
     .attacks = {
         [ATTACK_LIGHT] = {
@@ -987,7 +1047,7 @@ void RunOneSimStep(struct GameState* gs) {
 	
 	    bool crouching = (p->state == STATE_CROUCH) || defenderInput->down;
 	    bool blocked = false;
-	    if (holdingBack) {
+	    if (holdingBack && p->state != STATE_ATTACK) {
 	        if (crouching && !hit->overhead) blocked = true;
 	        else if (!crouching && !hit->low) blocked = true;
 	    }
