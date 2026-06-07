@@ -26,6 +26,7 @@
 - [x] Auto face opponent
 - [x] STATE_CROUCH: crouch on holding 2. framework for crouch attacks.
 - [ ] STATE_BLOCK: block attacks. added bools overhead and low on attacks. 
+- [x] Input Buffer: buffer up to 6 frames in advance. buffer during blockstun, attack, etc.
 
 ## Next Steps
 

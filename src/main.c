@@ -16,6 +16,7 @@
 #define INPUT_BUFFER_SIZE 120
 #define INPUT_HISTORY_SIZE 10
 #define STATE_HISTORY_SIZE 60
+#define INPUT_BUFFER_WINDOW 6
 
 #define MAX_HURTBOXES 4
 #define MAX_HITBOXES 4
@@ -400,15 +401,15 @@ enum PlayerState {
 	STATE_BLOCK
 };
 
-enum DispState {
-    DISP_IDLE,
-    DISP_WALK,
-    DISP_JUMP,
-    DISP_ATTACK_STARTUP,
-    DISP_ATTACK_ACTIVE,
-    DISP_ATTACK_RECOVERY,
-    DISP_HITSTUN,
-    DISP_BLOCKSTUN,
+enum DisplayState {
+    DISPLAY_IDLE,
+    DISPLAY_WALK,
+    DISPLAY_JUMP,
+    DISPLAY_ATTACK_STARTUP,
+    DISPLAY_ATTACK_ACTIVE,
+    DISPLAY_ATTACK_RECOVERY,
+    DISPLAY_HITSTUN,
+    DISPLAY_BLOCKSTUN,
 };
 
 struct Player {
@@ -429,6 +430,9 @@ struct Player {
 
 	bool hitConnected[MAX_HITBOX_STRIPS];
 	int stunAnimState;
+
+	int bufferedAttack;
+	int bufferTimer;
 };
 
 static void WorldRect(struct Player* p, struct Rect* r, float* outX, float* outY) {
@@ -436,7 +440,7 @@ static void WorldRect(struct Player* p, struct Rect* r, float* outX, float* outY
     *outY = p->y + r->offsetY;
 }
 
-static struct AnimationStrips* GetCurrentAnimStrips(struct Player* p) {
+static struct AnimationStrips* GetCurrentAnimationStrips(struct Player* p) {
     switch (p->state) {
         case STATE_IDLE:   return &p->character->animations.idle;
         case STATE_WALK:   return &p->character->animations.walk;
@@ -456,20 +460,20 @@ static struct AnimationStrips* GetCurrentAnimStrips(struct Player* p) {
     return NULL;
 }
 
-static int GetCurrentAnimFrame(struct Player* p) {
+static int GetCurrentAnimationFrame(struct Player* p) {
     if (p->state == STATE_ATTACK) {
-        struct AttackData* ad = &p->character->attacks[p->attackType];
-        int total = ad->startup + ad->active + ad->recovery;
+        struct AttackData* attackData = &p->character->attacks[p->attackType];
+        int total = attackData->startup + attackData->active + attackData->recovery;
         return total - p->stateTimer;
     }
     return 0;
 }
 
 static int GetActiveCollisionBoxes(struct Player* p, struct CollisionBox* outBoxes, int maxOut) {
-    struct AnimationStrips* anim = GetCurrentAnimStrips(p);
+    struct AnimationStrips* anim = GetCurrentAnimationStrips(p);
     if (!anim) return 0;
 
-    int frame = GetCurrentAnimFrame(p);
+    int frame = GetCurrentAnimationFrame(p);
     int count = 0;
     for (int s = 0; s < anim->stripCount && count < maxOut; s++) {
         struct AnimationStrip* strip = &anim->strips[s];
@@ -483,10 +487,10 @@ static int GetActiveCollisionBoxes(struct Player* p, struct CollisionBox* outBox
 }
 
 static int GetActiveHurtboxes(struct Player* p, struct Rect* outBoxes, int maxOut) {
-    struct AnimationStrips* anim = GetCurrentAnimStrips(p);
+    struct AnimationStrips* anim = GetCurrentAnimationStrips(p);
     if (!anim) return 0;
 
-    int frame = GetCurrentAnimFrame(p);
+    int frame = GetCurrentAnimationFrame(p);
     int count = 0;
     for (int s = 0; s < anim->stripCount && count < maxOut; s++) {
         struct AnimationStrip* strip = &anim->strips[s];
@@ -539,22 +543,22 @@ static void ResolvePlayerCollision(struct Player* p0, struct Player* p1) {
         float overlapX = fminf(max0x - min1x, max1x - min0x);
         float push = overlapX * 0.5f;
 
-        float dir;
+        float direction;
         if (min0x < min1x) {
-            dir = -1.0f;
+            direction = -1.0f;
         } else if (min0x > min1x) {
-            dir = 1.0f;
+            direction = 1.0f;
         } else {
             float stageCenter = (STAGE_LEFT + STAGE_RIGHT) * 0.5f;
             if (p0->y < p1->y) {
-                dir = (p0->x < stageCenter) ? 1.0f : -1.0f;
+                direction = (p0->x < stageCenter) ? 1.0f : -1.0f;
             } else {
-                dir = (p1->x < stageCenter) ? -1.0f : 1.0f;
+                direction = (p1->x < stageCenter) ? -1.0f : 1.0f;
             }
         }
 
-        p0->x += dir * push;
-        p1->x -= dir * push;
+        p0->x += direction * push;
+        p1->x -= direction * push;
     }
 }
 
@@ -579,6 +583,8 @@ struct SaveState {
     float health;
     bool hitConnected[MAX_HITBOX_STRIPS];
     int stunAnimState;
+    int bufferedAttack;
+    int bufferTimer;
 };
 
 static struct GameState gameState;
@@ -593,14 +599,14 @@ static bool showInputP1 = true;
 static bool showInputP2 = false;
 static bool showStateTimeline = true;
 
-static enum DispState stateHistoryP1[STATE_HISTORY_SIZE];
-static enum DispState stateHistoryP2[STATE_HISTORY_SIZE];
+static enum DisplayState stateHistoryP1[STATE_HISTORY_SIZE];
+static enum DisplayState stateHistoryP2[STATE_HISTORY_SIZE];
 
 #define FRAME_METER_MAX 60
 
 struct FrameMeterEntry {
-    enum DispState p1;
-    enum DispState p2;
+    enum DisplayState p1;
+    enum DisplayState p2;
 };
 
 static struct FrameMeterEntry frameMeter[FRAME_METER_MAX];
@@ -633,6 +639,8 @@ void SavePlayerState(const struct Player* player, struct SaveState* save) {
     save->attackType = player->attackType;
     save->health = player->health;
     save->stunAnimState = player->stunAnimState;
+    save->bufferedAttack = player->bufferedAttack;
+    save->bufferTimer = player->bufferTimer;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         save->hitConnected[i] = player->hitConnected[i];
     }
@@ -650,9 +658,25 @@ void RestorePlayerState(struct Player* player, const struct SaveState* save) {
     player->attackType = save->attackType;
     player->health = save->health;
     player->stunAnimState = save->stunAnimState;
+    player->bufferedAttack = save->bufferedAttack;
+    player->bufferTimer = save->bufferTimer;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         player->hitConnected[i] = save->hitConnected[i];
     }
+}
+
+static void StartAttack(struct Player* player, int attackType) {
+    player->attackType = attackType;
+    struct AttackData* attackData = &player->character->attacks[attackType];
+    player->stateTimer = attackData->startup + attackData->active + attackData->recovery;
+    player->attackFrame = 0;
+    for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
+        player->hitConnected[i] = false;
+    }
+    if (player->grounded) {
+        player->velocityX = 0.0f;
+    }
+    player->state = STATE_ATTACK;
 }
 
 void InitPlayer(struct Player* player, float x, float y, struct Character* character) {
@@ -669,17 +693,19 @@ void InitPlayer(struct Player* player, float x, float y, struct Character* chara
     player->attackFrame = 0;
 	player->health = character->maxHealth;
 	player->stunAnimState = 0;
+	player->bufferedAttack = -1;
+	player->bufferTimer = 0;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         player->hitConnected[i] = false;
     }
 }
 
 void GameStep(struct Player* player, const struct Player* other, const struct InputState* input, const struct InputState* prevInput) {
-    int dirX = 0;
+    int directionX = 0;
     if (input->left && !input->right) {
-        dirX = -1;
+        directionX = -1;
     } else if (input->right && !input->left) {
-        dirX = 1;
+        directionX = 1;
     }
 
     if (player->grounded && (player->state == STATE_IDLE || player->state == STATE_WALK || player->state == STATE_CROUCH)) {
@@ -691,27 +717,35 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
         }
     }
 
+    // Buffer timer decay
+    if (player->bufferTimer > 0) {
+        player->bufferTimer--;
+        if (player->bufferTimer == 0)
+            player->bufferedAttack = -1;
+    }
+
     bool lightPressed = input->light && !prevInput->light;
     bool mediumPressed = input->medium && !prevInput->medium;
     bool heavyPressed = input->heavy && !prevInput->heavy;
+
+    // Buffer attack presses during non-actionable states
+    bool anyPressed = lightPressed || mediumPressed || heavyPressed;
+    bool canAct = (player->state == STATE_IDLE || player->state == STATE_WALK ||
+                   player->state == STATE_CROUCH || player->state == STATE_JUMP);
+    if (anyPressed && !canAct) {
+        player->bufferedAttack = lightPressed ? ATTACK_LIGHT
+                               : mediumPressed ? ATTACK_MEDIUM
+                               : ATTACK_HEAVY;
+        player->bufferTimer = INPUT_BUFFER_WINDOW;
+    }
 
     switch (player->state) {
         case STATE_IDLE:
         case STATE_WALK:
             if (lightPressed || mediumPressed || heavyPressed) {
-                player->attackType = lightPressed ? ATTACK_LIGHT
-                                  : mediumPressed ? ATTACK_MEDIUM
-                                  : ATTACK_HEAVY;
-                struct AttackData* ad = &player->character->attacks[player->attackType];
-                player->stateTimer = ad->startup + ad->active + ad->recovery;
-                player->attackFrame = 0;
-                for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
-                    player->hitConnected[i] = false;
-                }
-                if (player->grounded) {
-                    player->velocityX = 0.0f;
-                }
-                player->state = STATE_ATTACK;
+                StartAttack(player, lightPressed ? ATTACK_LIGHT
+                                          : mediumPressed ? ATTACK_MEDIUM
+                                          : ATTACK_HEAVY);
                 break;
             }
 
@@ -721,8 +755,8 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 				break;
 			}
 
-            player->velocityX = dirX * player->character->walkSpeed;
-            player->state = (dirX != 0) ? STATE_WALK : STATE_IDLE;
+            player->velocityX = directionX * player->character->walkSpeed;
+            player->state = (directionX != 0) ? STATE_WALK : STATE_IDLE;
 
             if (input->up && player->grounded) {
                 player->velocityY = -player->character->jumpStrength;
@@ -733,24 +767,14 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
             break;
 		case STATE_CROUCH:
 			if (!input->down) {
-				player->state = (dirX != 0) ? STATE_WALK : STATE_IDLE;
+				player->state = (directionX != 0) ? STATE_WALK : STATE_IDLE;
 				break;
 			}
 			
 			if (lightPressed || mediumPressed || heavyPressed) {
-                player->attackType = lightPressed ? ATTACK_LIGHT //ATTACK_2L
-                                  : mediumPressed ? ATTACK_MEDIUM //ATTACK_2M
-                                  : ATTACK_HEAVY; //ATTACK_2H
-                struct AttackData* ad = &player->character->attacks[player->attackType];
-                player->stateTimer = ad->startup + ad->active + ad->recovery;
-                player->attackFrame = 0;
-                for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
-                    player->hitConnected[i] = false;
-                }
-                if (player->grounded) {
-                    player->velocityX = 0.0f;
-                }
-                player->state = STATE_ATTACK;
+                StartAttack(player, lightPressed ? ATTACK_LIGHT //ATTACK_2L
+                                          : mediumPressed ? ATTACK_MEDIUM //ATTACK_2M
+                                          : ATTACK_HEAVY); //ATTACK_2H
                 break;
             }
 
@@ -759,32 +783,25 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 			break;
         case STATE_JUMP:
             if (lightPressed || mediumPressed || heavyPressed) {
-                player->attackType = lightPressed ? ATTACK_LIGHT
-                                  : mediumPressed ? ATTACK_MEDIUM
-                                  : ATTACK_HEAVY;
-                struct AttackData* ad = &player->character->attacks[player->attackType];
-                player->stateTimer = ad->startup + ad->active + ad->recovery;
-                player->attackFrame = 0;
-                for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
-                    player->hitConnected[i] = false;
-                }
-                player->state = STATE_ATTACK;
+                StartAttack(player, lightPressed ? ATTACK_LIGHT
+                                          : mediumPressed ? ATTACK_MEDIUM
+                                          : ATTACK_HEAVY);
                 break;
             }
 
             if (player->grounded) {
-                player->state = (dirX != 0) ? STATE_WALK : STATE_IDLE;
+                player->state = (directionX != 0) ? STATE_WALK : STATE_IDLE;
             }
 
             break;
         case STATE_ATTACK: {
-			struct AttackData* ad = &player->character->attacks[player->attackType];
-            int totalFrames = ad->startup + ad->active + ad->recovery;
+			struct AttackData* attackData = &player->character->attacks[player->attackType];
+            int totalFrames = attackData->startup + attackData->active + attackData->recovery;
             int elapsed = totalFrames - player->stateTimer;
 
-            if (elapsed >= ad->startup && elapsed < ad->startup + ad->active) {
-                if (ad->moveX != 0.0f) {
-                    player->velocityX = player->facingRight ? ad->moveX : -ad->moveX;
+            if (elapsed >= attackData->startup && elapsed < attackData->startup + attackData->active) {
+                if (attackData->moveX != 0.0f) {
+                    player->velocityX = player->facingRight ? attackData->moveX : -attackData->moveX;
                 }
             } else if (player->grounded) {
                 player->velocityX = 0.0f;
@@ -794,7 +811,7 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
             player->attackFrame++;
             if (player->stateTimer <= 0) {
                 if (player->grounded) {
-                    player->state = input->down ? STATE_CROUCH : (dirX != 0 ? STATE_WALK : STATE_IDLE);
+                    player->state = input->down ? STATE_CROUCH : (directionX != 0 ? STATE_WALK : STATE_IDLE);
                 } else {
                     player->state = STATE_JUMP;
                 }
@@ -814,7 +831,7 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 
 			if (player->stateTimer <= 0) {
                 if (player->grounded) {
-                    player->state = input->down ? STATE_CROUCH : (dirX != 0 ? STATE_WALK : STATE_IDLE);
+                    player->state = input->down ? STATE_CROUCH : (directionX != 0 ? STATE_WALK : STATE_IDLE);
                 } else {
                     player->state = STATE_JUMP;
                 }
@@ -828,6 +845,17 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 		default:
 			break;
 	}
+
+    // Consume buffered input on first actionable frame
+    if (player->bufferedAttack >= 0 && player->bufferTimer > 0) {
+        bool canAct = (player->state == STATE_IDLE || player->state == STATE_WALK ||
+                       player->state == STATE_CROUCH || player->state == STATE_JUMP);
+        if (canAct) {
+            StartAttack(player, player->bufferedAttack);
+            player->bufferedAttack = -1;
+            player->bufferTimer = 0;
+        }
+    }
 
     if (!player->grounded) {
         player->velocityY += GRAVITY * DT;
@@ -895,17 +923,17 @@ void RunOneSimStep(struct GameState* gs) {
 
     for (int pl = 0; pl < MAX_PLAYERS; pl++) {
         struct InputState* cur = &frameInput.players[pl];
-        struct InputHistoryEntry* hist = pl == 0 ? historyP1 : historyP2;
+        struct InputHistoryEntry* historyEntry = pl == 0 ? historyP1 : historyP2;
         int* count = pl == 0 ? &historyCountP1 : &historyCountP2;
-        if (*count > 0 && InputStateEq(&hist[0].state, cur)) {
-            hist[0].duration++;
+        if (*count > 0 && InputStateEq(&historyEntry[0].state, cur)) {
+            historyEntry[0].duration++;
         } else {
             if (*count < INPUT_HISTORY_SIZE) (*count)++;
             for (int h = *count - 1; h > 0; h--) {
-                hist[h] = hist[h - 1];
+                historyEntry[h] = historyEntry[h - 1];
             }
-            hist[0].state = *cur;
-            hist[0].duration = 1;
+            historyEntry[0].state = *cur;
+            historyEntry[0].duration = 1;
         }
     }
 
@@ -920,9 +948,9 @@ void RunOneSimStep(struct GameState* gs) {
     double stepStart = GetTime();
 
     for (int i = 0; i < MAX_PLAYERS; i++) {
-        int opponent = (i == 0) ? 1 : 0;
+        int oplayeronent = (i == 0) ? 1 : 0;
         GameStep(&gs->players[i],
-                 &gs->players[opponent],
+                 &gs->players[oplayeronent],
                  &gs->inputBuffer[index].players[i],
                  &prevFrame->players[i]);
     }
@@ -930,29 +958,29 @@ void RunOneSimStep(struct GameState* gs) {
     int slot = gs->currentFrame % STATE_HISTORY_SIZE;
     for (int i = 0; i < MAX_PLAYERS; i++) {
         struct Player* p = &gs->players[i];
-        enum DispState ds;
+        enum DisplayState ds;
         switch (p->state) {
-            case STATE_IDLE:   ds = DISP_IDLE; break;
-            case STATE_WALK:   ds = DISP_WALK; break;
-            case STATE_JUMP:   ds = DISP_JUMP; break;
-            case STATE_HITSTUN:   ds = DISP_HITSTUN; break;
-            case STATE_BLOCKSTUN: ds = DISP_BLOCKSTUN; break;
+            case STATE_IDLE:   ds = DISPLAY_IDLE; break;
+            case STATE_WALK:   ds = DISPLAY_WALK; break;
+            case STATE_JUMP:   ds = DISPLAY_JUMP; break;
+            case STATE_HITSTUN:   ds = DISPLAY_HITSTUN; break;
+            case STATE_BLOCKSTUN: ds = DISPLAY_BLOCKSTUN; break;
             case STATE_ATTACK: {
-                struct AttackData* ad = &p->character->attacks[p->attackType];
+                struct AttackData* attackData = &p->character->attacks[p->attackType];
                 int elapsed = p->attackFrame - 1;
-                if (elapsed < ad->startup) ds = DISP_ATTACK_STARTUP;
-                else if (elapsed < ad->startup + ad->active) ds = DISP_ATTACK_ACTIVE;
-                else ds = DISP_ATTACK_RECOVERY;
+                if (elapsed < attackData->startup) ds = DISPLAY_ATTACK_STARTUP;
+                else if (elapsed < attackData->startup + attackData->active) ds = DISPLAY_ATTACK_ACTIVE;
+                else ds = DISPLAY_ATTACK_RECOVERY;
                 break;
             }
-            default: ds = DISP_IDLE; break;
+            default: ds = DISPLAY_IDLE; break;
         }
         if (i == 0) stateHistoryP1[slot] = ds;
         else stateHistoryP2[slot] = ds;
     }
 
-    bool anyAction = (stateHistoryP1[slot] >= DISP_ATTACK_STARTUP && stateHistoryP1[slot] <= DISP_BLOCKSTUN) ||
-                     (stateHistoryP2[slot] >= DISP_ATTACK_STARTUP && stateHistoryP2[slot] <= DISP_BLOCKSTUN);
+    bool anyAction = (stateHistoryP1[slot] >= DISPLAY_ATTACK_STARTUP && stateHistoryP1[slot] <= DISPLAY_BLOCKSTUN) ||
+                     (stateHistoryP2[slot] >= DISPLAY_ATTACK_STARTUP && stateHistoryP2[slot] <= DISPLAY_BLOCKSTUN);
 
     if (anyAction) {
         if (!frameMeterActive) {
@@ -977,21 +1005,21 @@ void RunOneSimStep(struct GameState* gs) {
     struct HitResult hitResults[MAX_PLAYERS] = {0};
 
 	for (int i = 0; i < MAX_PLAYERS; i++) {
-	    int opponent = (i == 0) ? 1 : 0;
+	    int oplayeronent = (i == 0) ? 1 : 0;
 	    struct Player* attacker = &gs->players[i];
 	
 	    if (attacker->state != STATE_ATTACK) continue;
 	
-	    struct AttackData* ad = &attacker->character->attacks[attacker->attackType];
-	    int total = ad->startup + ad->active + ad->recovery;
+	    struct AttackData* attackData = &attacker->character->attacks[attacker->attackType];
+	    int total = attackData->startup + attackData->active + attackData->recovery;
 	    int elapsed = total - attacker->stateTimer;
 	
-	    for (int s = 0; s < ad->stripCount; s++) {
+	    for (int s = 0; s < attackData->stripCount; s++) {
 	        if (attacker->hitConnected[s]) continue;
-	        struct HitboxStrip* strip = &ad->strips[s];
+	        struct HitboxStrip* strip = &attackData->strips[s];
 	        if (elapsed < strip->startFrame || elapsed > strip->endFrame) continue;
 	
-	        struct Player* defender = &gs->players[opponent];
+	        struct Player* defender = &gs->players[oplayeronent];
 	        for (int h = 0; h < strip->hitboxCount; h++) {
 	            float ax, ay;
 	            WorldRect(attacker, &strip->hitboxes[h].rect, &ax, &ay);
@@ -1009,7 +1037,7 @@ void RunOneSimStep(struct GameState* gs) {
 	                if (AABB(ax, ay, aw, ah, dx, dy, dw, dh)) {
 	                    attacker->hitConnected[s] = true;
 	
-	                    struct HitResult* result = &hitResults[opponent];
+	                    struct HitResult* result = &hitResults[oplayeronent];
 	
 	                    result->hit = true;
 	                    result->damage = strip->damage;
@@ -1066,9 +1094,9 @@ void RunOneSimStep(struct GameState* gs) {
 	
 	        int attackerRemaining = gs->players[other].stateTimer;
 	        int defenderStun = hit->hitstun;
-	        int adv = defenderStun - attackerRemaining;
-	        if (other == 0) { meterLastAdvP1 = adv; meterLastAdvP2 = -adv; }
-	        else { meterLastAdvP2 = adv; meterLastAdvP1 = -adv; }
+	        int advantage = defenderStun - attackerRemaining;
+	        if (other == 0) { meterLastAdvP1 = advantage; meterLastAdvP2 = -advantage; }
+	        else { meterLastAdvP2 = advantage; meterLastAdvP1 = -advantage; }
 	    } else {
 	        int other = (i == 0) ? 1 : 0;
 	        printf("Player %d blocked!\n", other + 1);
@@ -1082,9 +1110,9 @@ void RunOneSimStep(struct GameState* gs) {
 	
 	        int attackerRemaining = gs->players[other].stateTimer;
 	        int defenderStun = hit->blockstun;
-	        int adv = defenderStun - attackerRemaining;
-	        if (other == 0) { meterLastAdvP1 = adv; meterLastAdvP2 = -adv; }
-	        else { meterLastAdvP2 = adv; meterLastAdvP1 = -adv; }
+	        int advantage = defenderStun - attackerRemaining;
+	        if (other == 0) { meterLastAdvP1 = advantage; meterLastAdvP2 = -advantage; }
+	        else { meterLastAdvP2 = advantage; meterLastAdvP1 = -advantage; }
 	    }
     }
 
@@ -1168,9 +1196,9 @@ static void DrawCurrentInput(struct InputState state, int x, int y, bool isP1) {
     DrawText("H", bx + 2 * (bs + bg) + 2, by + 1, 9, state.heavy ? RED : dim);
 }
 
-static void DrawInputHistory(struct InputHistoryEntry* hist, int count, int x, int y) {
+static void DrawInputHistory(struct InputHistoryEntry* entries, int count, int x, int y) {
     for (int i = 0; i < count; i++) {
-        struct InputState* s = &hist[i].state;
+        struct InputState* s = &entries[i].state;
         int ry = y + i * 18;
         int ds = 6, g = 2, cw = ds + g, ch = ds + g;
         Color on = (Color){180, 180, 50, 255};
@@ -1187,45 +1215,45 @@ static void DrawInputHistory(struct InputHistoryEntry* hist, int count, int x, i
         DrawText("M", tx, ry, 9, s->medium ? GREEN : dim); tx += 11;
         DrawText("H", tx, ry, 9, s->heavy ? RED : dim); tx += 11;
 
-        DrawText(TextFormat("%df", hist[i].duration), tx, ry, 9, BLACK);
+        DrawText(TextFormat("%df", entries[i].duration), tx, ry, 9, BLACK);
     }
 }
 
-static Color DispColor(enum DispState s) {
+static Color DisplayColor(enum DisplayState s) {
     switch (s) {
-        case DISP_IDLE:             return (Color){180, 180, 180, 255};
-        case DISP_WALK:             return (Color){ 80, 130, 255, 255};
-        case DISP_JUMP:             return (Color){ 80, 220,  80, 255};
-        case DISP_ATTACK_STARTUP:   return (Color){255, 255,  80, 255};
-        case DISP_ATTACK_ACTIVE:    return (Color){255,  50,  50, 255};
-        case DISP_ATTACK_RECOVERY:  return (Color){180,  50,  50, 255};
-        case DISP_HITSTUN:          return (Color){255, 180,  40, 255};
-        case DISP_BLOCKSTUN:        return (Color){200,  80, 255, 255};
+        case DISPLAY_IDLE:             return (Color){180, 180, 180, 255};
+        case DISPLAY_WALK:             return (Color){ 80, 130, 255, 255};
+        case DISPLAY_JUMP:             return (Color){ 80, 220,  80, 255};
+        case DISPLAY_ATTACK_STARTUP:   return (Color){255, 255,  80, 255};
+        case DISPLAY_ATTACK_ACTIVE:    return (Color){255,  50,  50, 255};
+        case DISPLAY_ATTACK_RECOVERY:  return (Color){180,  50,  50, 255};
+        case DISPLAY_HITSTUN:          return (Color){255, 180,  40, 255};
+        case DISPLAY_BLOCKSTUN:        return (Color){200,  80, 255, 255};
         default:                    return (Color){100, 100, 100, 255};
     }
 }
 
-static Color AdvColor(int adv) {
-    if (adv > 0) return (Color){50, 100, 255, 255};
-    if (adv < 0) return (Color){255, 50, 50, 255};
+static Color AdvantageColor(int advantage) {
+    if (advantage > 0) return (Color){50, 100, 255, 255};
+    if (advantage < 0) return (Color){255, 50, 50, 255};
     return BLACK;
 }
 
-static void DrawAdvLine(int x, int y, int pl, int at, int adv) {
+static void DrawAdvantageLine(int x, int y, int pl, int at, int advantage) {
     int labelX = x;
     if (at >= 0) {
-        struct AttackData* ad = &character1.attacks[at];
+        struct AttackData* attackData = &character1.attacks[at];
         DrawText(TextFormat("startup %df  active %df  recovery %df  Adv: ",
-                 ad->startup, ad->active, ad->recovery),
+                 attackData->startup, attackData->active, attackData->recovery),
                  labelX, y, 12, BLACK);
         labelX += MeasureText(TextFormat("startup %df  active %df  recovery %df  Adv: ",
-                             ad->startup, ad->active, ad->recovery), 12);
+                             attackData->startup, attackData->active, attackData->recovery), 12);
     } else {
         DrawText("startup --f  active --f  recovery --f  Adv: ",
                  labelX, y, 12, BLACK);
         labelX += MeasureText("startup --f  active --f  recovery --f  Adv: ", 12);
     }
-    DrawText(TextFormat("%+df", adv), labelX, y, 12, AdvColor(adv));
+    DrawText(TextFormat("%+df", advantage), labelX, y, 12, AdvantageColor(advantage));
 }
 
 static void DrawFrameMeter(void) {
@@ -1244,7 +1272,7 @@ static void DrawFrameMeter(void) {
     int p2At = frameMeterCount > 0 ? meterP2AttackType : -1;
 
     int p1LabelY = 122;
-    DrawAdvLine(barX, p1LabelY, 1, p1At, meterLastAdvP1);
+    DrawAdvantageLine(barX, p1LabelY, 1, p1At, meterLastAdvP1);
 
     int barY = p1LabelY + 14;
 
@@ -1266,8 +1294,8 @@ static void DrawFrameMeter(void) {
 
         Color c1, c2;
         if (bufIdx >= 0) {
-            c1 = DispColor(frameMeter[bufIdx].p1);
-            c2 = DispColor(frameMeter[bufIdx].p2);
+            c1 = DisplayColor(frameMeter[bufIdx].p1);
+            c2 = DisplayColor(frameMeter[bufIdx].p2);
         } else {
             c1 = (Color){180, 180, 180, 80};
             c2 = (Color){180, 180, 180, 80};
@@ -1284,7 +1312,7 @@ static void DrawFrameMeter(void) {
     DrawText("P2", barX - 26, barY + barH + gap + 1, 12, BLACK);
 
     int p2LabelY = barY + barH + gap + barH + 6;
-    DrawAdvLine(barX, p2LabelY, 2, p2At, -meterLastAdvP1);
+    DrawAdvantageLine(barX, p2LabelY, 2, p2At, -meterLastAdvP1);
 }
 
 int main(void) {
@@ -1297,7 +1325,7 @@ int main(void) {
 	InitPlayer(&gameState.players[0], stageCenter - SCREEN_WIDTH * 0.25f, GROUND_HEIGHT, &character1);
 	InitPlayer(&gameState.players[1], stageCenter + SCREEN_WIDTH * 0.25f, GROUND_HEIGHT, &character1);
 
-    double accumulator = 0.0;
+    double acharacterumulator = 0.0;
     double fpsTimer = 0.0;
     int stepsThisSecond = 0;
 
@@ -1334,12 +1362,12 @@ int main(void) {
                 doStep = 0;
             }
         } else {
-            accumulator += frameTime;
+            acharacterumulator += frameTime;
 
             int stepsRun = 0;
-            while (accumulator >= DT) {
+            while (acharacterumulator >= DT) {
                 RunOneSimStep(&gameState);
-                accumulator -= DT;
+                acharacterumulator -= DT;
                 stepsRun++;
             }
 
@@ -1418,17 +1446,17 @@ int main(void) {
 					BeginMode2D(camera);
 
 						for (int pi = 0; pi < MAX_PLAYERS; pi++) {
-                    	    struct Player* pp = &gameState.players[pi];
-                    	    struct Character* cc = pp->character;
+                    	    struct Player* player = &gameState.players[pi];
+                    	    struct Character* character = player->character;
 
                     	    // Hurtboxes (green)
                     	    {
                     	        struct Rect hurtboxes[MAX_HURTBOXES];
-                    	        int hurtboxCount = GetActiveHurtboxes(pp, hurtboxes, MAX_HURTBOXES);
+                    	        int hurtboxCount = GetActiveHurtboxes(player, hurtboxes, MAX_HURTBOXES);
                     	        for (int h = 0; h < hurtboxCount; h++) {
                     	            struct Rect* r = &hurtboxes[h];
-                    	            float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
-                    	            float hy = pp->y + r->offsetY;
+                    	            float hx = player->x + (player->facingRight ? r->offsetX : -r->offsetX - r->width);
+                    	            float hy = player->y + r->offsetY;
                     	            DrawRectangleLines((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 0, 255, 0, 255 });
                     	            DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 0, 255, 0, 80 });
                     	        }
@@ -1437,28 +1465,28 @@ int main(void) {
                     	    // Collision boxes (yellow)
                     	    {
                     	        struct CollisionBox boxes[MAX_COLLISION_BOXES];
-                    	        int boxCount = GetActiveCollisionBoxes(pp, boxes, MAX_COLLISION_BOXES);
+                    	        int boxCount = GetActiveCollisionBoxes(player, boxes, MAX_COLLISION_BOXES);
                     	        for (int b = 0; b < boxCount; b++) {
                     	            struct Rect* r = &boxes[b].rect;
                     	            float hx, hy;
-                    	            WorldRect(pp, r, &hx, &hy);
+                    	            WorldRect(player, r, &hx, &hy);
                     	            DrawRectangleLines((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 255, 0, 255 });
                     	            DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 255, 0, 60 });
                     	        }
                     	    }
 
                     	    // Hitboxes (red) - only during attack
-                    	    if (pp->state == STATE_ATTACK) {
-                    	        struct AttackData* ad = &cc->attacks[pp->attackType];
-                    	        int totalFrames = ad->startup + ad->active + ad->recovery;
-                    	        int elapsed = totalFrames - pp->stateTimer;
-                    	        for (int s = 0; s < ad->stripCount; s++) {
-                    	            struct HitboxStrip* strip = &ad->strips[s];
+                    	    if (player->state == STATE_ATTACK) {
+                    	        struct AttackData* attackData = &character->attacks[player->attackType];
+                    	        int totalFrames = attackData->startup + attackData->active + attackData->recovery;
+                    	        int elapsed = totalFrames - player->stateTimer;
+                    	        for (int s = 0; s < attackData->stripCount; s++) {
+                    	            struct HitboxStrip* strip = &attackData->strips[s];
                     	            if (elapsed >= strip->startFrame && elapsed <= strip->endFrame) {
                     	                for (int b = 0; b < strip->hitboxCount; b++) {
                     	                    struct Rect* r = &strip->hitboxes[b].rect;
-                    	                    float hx = pp->x + (pp->facingRight ? r->offsetX : -r->offsetX - r->width);
-                    	                    float hy = pp->y + r->offsetY;
+                    	                    float hx = player->x + (player->facingRight ? r->offsetX : -r->offsetX - r->width);
+                    	                    float hy = player->y + r->offsetY;
                     	                    DrawRectangleLines((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 0, 0, 255 });
 											DrawRectangle((int)hx, (int)hy, (int)r->width, (int)r->height, (Color){ 255, 0, 0, 80 });
                     	                }
