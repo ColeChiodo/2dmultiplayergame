@@ -17,6 +17,14 @@
 #define INPUT_HISTORY_SIZE 10
 #define STATE_HISTORY_SIZE 60
 #define INPUT_BUFFER_WINDOW 6
+#define THROW_TECH_WINDOW 7
+#define KNOCKDOWN_GROUND_TIME 180
+#define KNOCKDOWN_FORCED_GROUND 30
+#define WAKEUP_DURATION 10
+#define KNOCKDOWN_INVINCIBLE 60
+#define ROLL_DURATION 8
+#define ROLL_SPEED 600.0f
+#define ROLL_INVINCIBLE 5
 
 #define MAX_HURTBOXES 4
 #define MAX_HITBOXES 4
@@ -86,6 +94,7 @@ struct HitboxStrip {
 	float blockKnockbackX, blockKnockbackY;
     int hitstun, blockstun;
 	bool overhead, low;
+	bool knockdown;
 };
 
 struct HitResult {
@@ -104,9 +113,10 @@ struct HitResult {
 
     bool overhead;
     bool low;
+    bool knockdown;
 };
 
-enum AttackType { ATTACK_LIGHT, ATTACK_MEDIUM, ATTACK_HEAVY, ATTACK_COUNT };
+enum AttackType { ATTACK_LIGHT, ATTACK_MEDIUM, ATTACK_HEAVY, ATTACK_THROW, ATTACK_COUNT };
 
 struct AttackData {
     int startup, active, recovery;
@@ -114,6 +124,20 @@ struct AttackData {
     int stripCount;
     struct AnimationStrips animations;
     float moveX, moveY;
+};
+
+struct ThrowData {
+    int startup;
+    int active;
+    int whiffRecovery;
+    int throwDuration;
+    int throwRecovery;
+    float range;
+    float damage;
+    int hitstun;
+    float knockbackX, knockbackY;
+    bool knockdown;
+    struct AnimationStrips startupAnim;
 };
 
 struct AnimationSet {
@@ -125,6 +149,11 @@ struct AnimationSet {
     struct AnimationStrips crouchBlockstun;
     struct AnimationStrips hitstun;
     struct AnimationStrips crouchHitstun;
+    struct AnimationStrips throwAnim;
+    struct AnimationStrips thrownAnim;
+    struct AnimationStrips knockdown;
+    struct AnimationStrips wakeup;
+    struct AnimationStrips rolling;
 };
 
 struct Character {
@@ -136,6 +165,7 @@ struct Character {
 	float maxHealth;
     struct AnimationSet animations;
     struct AttackData attacks[ATTACK_COUNT];
+    struct ThrowData throwData;
 };
 
 static struct Character character1 = {
@@ -274,6 +304,77 @@ static struct Character character1 = {
                 },
             },
         },
+        .throwAnim = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 19,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                    },
+                    .hurtboxCount = 0,
+                },
+            },
+        },
+        .thrownAnim = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 19,
+                    .collisionBoxCount = 0,
+                    .hurtboxCount = 0,
+                },
+            },
+        },
+        .knockdown = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -37.5f, .offsetY = -15.0f, .width = 75.0f, .height = 15.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -15.0f, .width = 75.0f, .height = 15.0f },
+                    },
+                },
+            },
+        },
+        .wakeup = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                    },
+                },
+            },
+        },
+        .rolling = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 0,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -37.5f, .offsetY = -15.0f, .width = 75.0f, .height = 15.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -15.0f, .width = 75.0f, .height = 15.0f },
+                    },
+                },
+            },
+        },
     },
     .attacks = {
         [ATTACK_LIGHT] = {
@@ -368,6 +469,7 @@ static struct Character character1 = {
 					.blockstun = 12,
 					.low = true,
 					.overhead = false,
+					.knockdown = true,
                 },
             },
             .animations = {
@@ -388,6 +490,35 @@ static struct Character character1 = {
             },
         },
     },
+    .throwData = {
+        .startup = 3,
+        .active = 1,
+        .whiffRecovery = 12,
+        .throwDuration = 20,
+        .throwRecovery = 5,
+        .range = 75.0f,
+        .damage = 800,
+        .hitstun = 25,
+        .knockbackX = 0.0f,
+        .knockbackY = -200.0f,
+        .knockdown = true,
+        .startupAnim = {
+            .stripCount = 1,
+            .strips = {
+                [0] = {
+                    .startFrame = 0, .endFrame = 15,
+                    .collisionBoxCount = 1,
+                    .collisionBoxes = {
+                        [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                    },
+                    .hurtboxCount = 1,
+                    .hurtboxes = {
+                        [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                    },
+                },
+            },
+        },
+    },
 };
 
 enum PlayerState {
@@ -398,7 +529,12 @@ enum PlayerState {
     STATE_ATTACK,
 	STATE_HITSTUN,
     STATE_BLOCKSTUN,
-	STATE_BLOCK
+	STATE_BLOCK,
+	STATE_THROWING,
+	STATE_THROWN,
+	STATE_KNOCKDOWN,
+	STATE_WAKEUP,
+	STATE_ROLLING
 };
 
 enum DisplayState {
@@ -410,6 +546,12 @@ enum DisplayState {
     DISPLAY_ATTACK_RECOVERY,
     DISPLAY_HITSTUN,
     DISPLAY_BLOCKSTUN,
+    DISPLAY_THROWING,
+    DISPLAY_THROWN,
+    DISPLAY_KNOCKDOWN,
+    DISPLAY_KNOCKDOWN_FORCED,
+    DISPLAY_WAKEUP,
+    DISPLAY_ROLLING,
 };
 
 struct Player {
@@ -433,6 +575,10 @@ struct Player {
 
 	int bufferedAttack;
 	int bufferTimer;
+	int chordTimer;
+	int chordIntent;
+	int invincibleTimer;
+	bool wakeupAttack;
 };
 
 static void WorldRect(struct Player* p, struct Rect* r, float* outX, float* outY) {
@@ -440,13 +586,18 @@ static void WorldRect(struct Player* p, struct Rect* r, float* outX, float* outY
     *outY = p->y + r->offsetY;
 }
 
+static struct AttackData getupAttackData;
+
 static struct AnimationStrips* GetCurrentAnimationStrips(struct Player* p) {
     switch (p->state) {
         case STATE_IDLE:   return &p->character->animations.idle;
         case STATE_WALK:   return &p->character->animations.walk;
         case STATE_CROUCH: return &p->character->animations.crouch;
         case STATE_JUMP:   return &p->character->animations.jump;
-        case STATE_ATTACK: return &p->character->attacks[p->attackType].animations;
+	case STATE_ATTACK:
+            if (p->wakeupAttack) return &getupAttackData.animations;
+            if (p->attackType == ATTACK_THROW) return &p->character->throwData.startupAnim;
+            return &p->character->attacks[p->attackType].animations;
         case STATE_BLOCK:
             if (p->stunAnimState == 1) return &p->character->animations.crouch;
             return &p->character->animations.idle;
@@ -456,17 +607,39 @@ static struct AnimationStrips* GetCurrentAnimationStrips(struct Player* p) {
         case STATE_BLOCKSTUN:
             if (p->stunAnimState == 1) return &p->character->animations.crouchBlockstun;
             return &p->character->animations.blockstun;
+        case STATE_THROWING: return &p->character->animations.throwAnim;
+        case STATE_THROWN:   return &p->character->animations.thrownAnim;
+        case STATE_KNOCKDOWN: return &p->character->animations.knockdown;
+        case STATE_WAKEUP:    return &p->character->animations.wakeup;
+        case STATE_ROLLING:   return &p->character->animations.rolling;
     }
     return NULL;
 }
 
 static int GetCurrentAnimationFrame(struct Player* p) {
-    if (p->state == STATE_ATTACK) {
-        struct AttackData* attackData = &p->character->attacks[p->attackType];
-        int total = attackData->startup + attackData->active + attackData->recovery;
-        return total - p->stateTimer;
+    switch (p->state) {
+        case STATE_ATTACK:
+            if (p->attackType == ATTACK_THROW) {
+                struct ThrowData* td = &p->character->throwData;
+                int total = td->startup + td->active + td->whiffRecovery;
+                return total - p->stateTimer;
+            }
+            {
+                struct AttackData* attackData = p->wakeupAttack ? &getupAttackData : &p->character->attacks[p->attackType];
+                int total = attackData->startup + attackData->active + attackData->recovery;
+                return total - p->stateTimer;
+            }
+        case STATE_THROWING:
+        case STATE_THROWN: {
+            struct ThrowData* td = &p->character->throwData;
+            return td->throwDuration - p->stateTimer;
+        }
+        case STATE_KNOCKDOWN:
+        case STATE_WAKEUP:
+            return 0;
+        default:
+            return 0;
     }
-    return 0;
 }
 
 static int GetActiveCollisionBoxes(struct Player* p, struct CollisionBox* outBoxes, int maxOut) {
@@ -543,10 +716,12 @@ static void ResolvePlayerCollision(struct Player* p0, struct Player* p1) {
         float overlapX = fminf(max0x - min1x, max1x - min0x);
         float push = overlapX * 0.5f;
 
+        float center0 = (min0x + max0x) * 0.5f;
+        float center1 = (min1x + max1x) * 0.5f;
         float direction;
-        if (min0x < min1x) {
+        if (center0 < center1) {
             direction = -1.0f;
-        } else if (min0x > min1x) {
+        } else if (center0 > center1) {
             direction = 1.0f;
         } else {
             float stageCenter = (STAGE_LEFT + STAGE_RIGHT) * 0.5f;
@@ -585,6 +760,10 @@ struct SaveState {
     int stunAnimState;
     int bufferedAttack;
     int bufferTimer;
+    int chordTimer;
+    int chordIntent;
+    int invincibleTimer;
+    bool wakeupAttack;
 };
 
 static struct GameState gameState;
@@ -641,6 +820,10 @@ void SavePlayerState(const struct Player* player, struct SaveState* save) {
     save->stunAnimState = player->stunAnimState;
     save->bufferedAttack = player->bufferedAttack;
     save->bufferTimer = player->bufferTimer;
+    save->chordTimer = player->chordTimer;
+    save->chordIntent = player->chordIntent;
+    save->invincibleTimer = player->invincibleTimer;
+    save->wakeupAttack = player->wakeupAttack;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         save->hitConnected[i] = player->hitConnected[i];
     }
@@ -660,6 +843,10 @@ void RestorePlayerState(struct Player* player, const struct SaveState* save) {
     player->stunAnimState = save->stunAnimState;
     player->bufferedAttack = save->bufferedAttack;
     player->bufferTimer = save->bufferTimer;
+    player->chordTimer = save->chordTimer;
+    player->chordIntent = save->chordIntent;
+    player->invincibleTimer = save->invincibleTimer;
+    player->wakeupAttack = save->wakeupAttack;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         player->hitConnected[i] = save->hitConnected[i];
     }
@@ -679,6 +866,72 @@ static void StartAttack(struct Player* player, int attackType) {
     player->state = STATE_ATTACK;
 }
 
+static void StartThrow(struct Player* player) {
+    player->attackType = ATTACK_THROW;
+    struct ThrowData* td = &player->character->throwData;
+    player->stateTimer = td->startup + td->active + td->whiffRecovery;
+    player->attackFrame = 0;
+    for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
+        player->hitConnected[i] = false;
+    }
+    if (player->grounded) {
+        player->velocityX = 0.0f;
+    }
+    player->state = STATE_ATTACK;
+}
+
+static struct AttackData getupAttackData = {
+    .startup = 5,
+    .active = 8,
+    .recovery = 22,
+    .moveX = 0.0f, .moveY = 0.0f,
+    .animations = {
+        .stripCount = 1,
+        .strips = {
+            [0] = {
+                .startFrame = 0, .endFrame = 34,
+                .collisionBoxCount = 1,
+                .collisionBoxes = {
+                    [0] = { .rect = { .offsetX = -22.0f, .offsetY = -90.0f, .width = 44.0f, .height = 85.0f } },
+                },
+                .hurtboxCount = 1,
+                .hurtboxes = {
+                    [0] = { .offsetX = -37.5f, .offsetY = -150.0f, .width = 75.0f, .height = 150.0f },
+                },
+            },
+        },
+    },
+    .stripCount = 1,
+    .strips = {
+        [0] = {
+            .startFrame = 5, .endFrame = 12,
+            .hitboxCount = 1,
+            .hitboxes = {
+                [0] = { .rect = { .offsetX = -75.0f, .offsetY = -90.0f, .width = 150.0f, .height = 90.0f } },
+            },
+            .damage = 250,
+            .knockbackX = 400.0f, .knockbackY = -100.0f,
+            .blockKnockbackX = 200.0f, .blockKnockbackY = 0.0f,
+            .hitstun = 20,
+            .blockstun = 8,
+            .overhead = false, .low = false, .knockdown = false,
+        },
+    },
+};
+
+static void StartWakeupAttack(struct Player* player) {
+    player->state = STATE_ATTACK;
+    player->attackType = ATTACK_LIGHT;
+    player->wakeupAttack = true;
+    player->stateTimer = getupAttackData.startup + getupAttackData.active + getupAttackData.recovery;
+    player->attackFrame = 0;
+    for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
+        player->hitConnected[i] = false;
+    }
+    player->velocityX = 0.0f;
+    player->velocityY = 0.0f;
+}
+
 void InitPlayer(struct Player* player, float x, float y, struct Character* character) {
     player->x = x;
     player->y = y;
@@ -695,6 +948,10 @@ void InitPlayer(struct Player* player, float x, float y, struct Character* chara
 	player->stunAnimState = 0;
 	player->bufferedAttack = -1;
 	player->bufferTimer = 0;
+	player->chordTimer = 0;
+	player->chordIntent = 0;
+	player->invincibleTimer = 0;
+	player->wakeupAttack = false;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         player->hitConnected[i] = false;
     }
@@ -724,16 +981,23 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
             player->bufferedAttack = -1;
     }
 
+    // Invincible timer decay
+    if (player->invincibleTimer > 0) {
+        player->invincibleTimer--;
+    }
+
     bool lightPressed = input->light && !prevInput->light;
     bool mediumPressed = input->medium && !prevInput->medium;
     bool heavyPressed = input->heavy && !prevInput->heavy;
+    bool throwPressed = (input->medium && input->heavy) && !(prevInput->medium && prevInput->heavy);
 
     // Buffer attack presses during non-actionable states
-    bool anyPressed = lightPressed || mediumPressed || heavyPressed;
+    bool anyPressed = lightPressed || mediumPressed || heavyPressed || throwPressed;
     bool canAct = (player->state == STATE_IDLE || player->state == STATE_WALK ||
                    player->state == STATE_CROUCH || player->state == STATE_JUMP);
     if (anyPressed && !canAct) {
-        player->bufferedAttack = lightPressed ? ATTACK_LIGHT
+        player->bufferedAttack = throwPressed ? ATTACK_THROW
+                               : lightPressed ? ATTACK_LIGHT
                                : mediumPressed ? ATTACK_MEDIUM
                                : ATTACK_HEAVY;
         player->bufferTimer = INPUT_BUFFER_WINDOW;
@@ -742,6 +1006,10 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
     switch (player->state) {
         case STATE_IDLE:
         case STATE_WALK:
+            if (throwPressed) {
+                StartThrow(player);
+                break;
+            }
             if (lightPressed || mediumPressed || heavyPressed) {
                 StartAttack(player, lightPressed ? ATTACK_LIGHT
                                           : mediumPressed ? ATTACK_MEDIUM
@@ -770,7 +1038,12 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 				player->state = (directionX != 0) ? STATE_WALK : STATE_IDLE;
 				break;
 			}
-			
+
+			if (throwPressed) {
+			    StartThrow(player);
+			    break;
+			}
+
 			if (lightPressed || mediumPressed || heavyPressed) {
                 StartAttack(player, lightPressed ? ATTACK_LIGHT //ATTACK_2L
                                           : mediumPressed ? ATTACK_MEDIUM //ATTACK_2M
@@ -782,6 +1055,10 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 
 			break;
         case STATE_JUMP:
+            if (throwPressed) {
+                StartThrow(player);
+                break;
+            }
             if (lightPressed || mediumPressed || heavyPressed) {
                 StartAttack(player, lightPressed ? ATTACK_LIGHT
                                           : mediumPressed ? ATTACK_MEDIUM
@@ -795,9 +1072,28 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 
             break;
         case STATE_ATTACK: {
-			struct AttackData* attackData = &player->character->attacks[player->attackType];
+            if (player->attackType == ATTACK_THROW) {
+                struct ThrowData* td = &player->character->throwData;
+                player->stateTimer--;
+                player->attackFrame++;
+                if (player->stateTimer <= 0) {
+                    if (player->grounded) {
+                        player->state = input->down ? STATE_CROUCH : (directionX != 0 ? STATE_WALK : STATE_IDLE);
+                    } else {
+                        player->state = STATE_JUMP;
+                    }
+                }
+                break;
+            }
+			struct AttackData* attackData = player->wakeupAttack ? &getupAttackData : &player->character->attacks[player->attackType];
             int totalFrames = attackData->startup + attackData->active + attackData->recovery;
             int elapsed = totalFrames - player->stateTimer;
+
+            // Chord forgiveness: interrupt M/H startup if throw completes (wakeup attack excluded)
+            if (!player->wakeupAttack && elapsed < attackData->startup && throwPressed) {
+                StartThrow(player);
+                break;
+            }
 
             if (elapsed >= attackData->startup && elapsed < attackData->startup + attackData->active) {
                 if (attackData->moveX != 0.0f) {
@@ -810,6 +1106,7 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
             player->stateTimer--;
             player->attackFrame++;
             if (player->stateTimer <= 0) {
+                player->wakeupAttack = false;
                 if (player->grounded) {
                     player->state = input->down ? STATE_CROUCH : (directionX != 0 ? STATE_WALK : STATE_IDLE);
                 } else {
@@ -842,6 +1139,88 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 		    player->stunAnimState = input->down ? 1 : 0;
 			// TODO: transition when block is released
 			break;
+		case STATE_THROWING:
+		    player->velocityX = 0.0f;
+		    player->velocityY = 0.0f;
+		    player->grounded = true;
+		    player->stateTimer--;
+		    break;
+		case STATE_THROWN:
+		    player->velocityX = 0.0f;
+		    player->velocityY = 0.0f;
+		    player->grounded = true;
+		    player->stateTimer--;
+		    break;
+		case STATE_KNOCKDOWN:
+		    if (player->grounded) {
+		        player->velocityX *= 0.85f;
+		        if (fabsf(player->velocityX) < 1.0f) player->velocityX = 0.0f;
+		        // Forced ground phase: can't act yet
+		        int framesOnGround = KNOCKDOWN_GROUND_TIME - player->stateTimer;
+		        if (framesOnGround >= KNOCKDOWN_FORCED_GROUND) {
+		            // Wakeup attack: LMH chord
+		            bool wakeupAttackPressed = (input->light && input->medium && input->heavy) &&
+		                                       !(prevInput->light && prevInput->medium && prevInput->heavy);
+		            if (wakeupAttackPressed) {
+		                StartWakeupAttack(player);
+		                break;
+		            }
+		            // Roll: direction + attack button(s), exclude LMH chord
+		            bool anyRollPressed = (lightPressed || mediumPressed || heavyPressed) &&
+		                                  !(input->light && input->medium && input->heavy);
+		            if (anyRollPressed) {
+		                bool holdingForward = (player->facingRight && input->right) || (!player->facingRight && input->left);
+		                bool holdingBackward = (player->facingRight && input->left) || (!player->facingRight && input->right);
+		                float rollDir = player->facingRight ? 1.0f : -1.0f;
+		                float rollVel = 0.0f;
+		                if (holdingForward) rollVel = rollDir * ROLL_SPEED;
+		                else if (holdingBackward) rollVel = -rollDir * ROLL_SPEED;
+		                player->state = STATE_ROLLING;
+		                player->stateTimer = ROLL_DURATION;
+		                player->velocityX = rollVel;
+		                player->velocityY = 0.0f;
+		                player->invincibleTimer = ROLL_INVINCIBLE;
+		                break;
+		            }
+		        }
+		        player->stateTimer--;
+		        if (player->stateTimer <= 0) {
+		            player->state = STATE_WAKEUP;
+		            player->stateTimer = WAKEUP_DURATION;
+		        }
+		    }
+		    break;
+		case STATE_WAKEUP:
+		    player->velocityX = 0.0f;
+		    player->stateTimer--;
+		    if (throwPressed) {
+		        StartThrow(player);
+		        break;
+		    }
+		    if (lightPressed || mediumPressed || heavyPressed) {
+		        StartAttack(player, lightPressed ? ATTACK_LIGHT
+		                                : mediumPressed ? ATTACK_MEDIUM
+		                                : ATTACK_HEAVY);
+		        break;
+		    }
+		    if (player->stateTimer <= 0) {
+		        player->state = input->down ? STATE_CROUCH : (directionX != 0 ? STATE_WALK : STATE_IDLE);
+		    }
+		    break;
+		case STATE_ROLLING:
+		    // Wakeup attack override: all 3 buttons now held → cancel roll
+		    if ((input->light && input->medium && input->heavy) &&
+		        !(prevInput->light && prevInput->medium && prevInput->heavy)) {
+		        StartWakeupAttack(player);
+		        break;
+		    }
+		    player->velocityX *= 0.85f;
+		    if (fabsf(player->velocityX) < 1.0f) player->velocityX = 0.0f;
+		    player->stateTimer--;
+		    if (player->stateTimer <= 0) {
+		        player->state = STATE_IDLE;
+		    }
+		    break;
 		default:
 			break;
 	}
@@ -851,7 +1230,11 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
         bool canAct = (player->state == STATE_IDLE || player->state == STATE_WALK ||
                        player->state == STATE_CROUCH || player->state == STATE_JUMP);
         if (canAct) {
-            StartAttack(player, player->bufferedAttack);
+            if (player->bufferedAttack == ATTACK_THROW) {
+                StartThrow(player);
+            } else {
+                StartAttack(player, player->bufferedAttack);
+            }
             player->bufferedAttack = -1;
             player->bufferTimer = 0;
         }
@@ -965,8 +1348,21 @@ void RunOneSimStep(struct GameState* gs) {
             case STATE_JUMP:   ds = DISPLAY_JUMP; break;
             case STATE_HITSTUN:   ds = DISPLAY_HITSTUN; break;
             case STATE_BLOCKSTUN: ds = DISPLAY_BLOCKSTUN; break;
-            case STATE_ATTACK: {
-                struct AttackData* attackData = &p->character->attacks[p->attackType];
+            case STATE_THROWING:  ds = DISPLAY_THROWING; break;
+            case STATE_THROWN:    ds = DISPLAY_THROWN; break;
+            case STATE_KNOCKDOWN: {
+                int framesOnGround = 180 - p->stateTimer;
+                ds = framesOnGround >= 30 ? DISPLAY_KNOCKDOWN : DISPLAY_KNOCKDOWN_FORCED;
+                break;
+            }
+            case STATE_WAKEUP:    ds = DISPLAY_WAKEUP; break;
+            case STATE_ROLLING:   ds = DISPLAY_ROLLING; break;
+		    case STATE_ATTACK: {
+                if (p->attackType == ATTACK_THROW) {
+                    ds = DISPLAY_ATTACK_STARTUP;
+                    break;
+                }
+                struct AttackData* attackData = p->wakeupAttack ? &getupAttackData : &p->character->attacks[p->attackType];
                 int elapsed = p->attackFrame - 1;
                 if (elapsed < attackData->startup) ds = DISPLAY_ATTACK_STARTUP;
                 else if (elapsed < attackData->startup + attackData->active) ds = DISPLAY_ATTACK_ACTIVE;
@@ -979,8 +1375,8 @@ void RunOneSimStep(struct GameState* gs) {
         else stateHistoryP2[slot] = ds;
     }
 
-    bool anyAction = (stateHistoryP1[slot] >= DISPLAY_ATTACK_STARTUP && stateHistoryP1[slot] <= DISPLAY_BLOCKSTUN) ||
-                     (stateHistoryP2[slot] >= DISPLAY_ATTACK_STARTUP && stateHistoryP2[slot] <= DISPLAY_BLOCKSTUN);
+    bool anyAction = (stateHistoryP1[slot] >= DISPLAY_ATTACK_STARTUP && stateHistoryP1[slot] <= DISPLAY_THROWN) ||
+                     (stateHistoryP2[slot] >= DISPLAY_ATTACK_STARTUP && stateHistoryP2[slot] <= DISPLAY_THROWN);
 
     if (anyAction) {
         if (!frameMeterActive) {
@@ -1004,13 +1400,42 @@ void RunOneSimStep(struct GameState* gs) {
 
     struct HitResult hitResults[MAX_PLAYERS] = {0};
 
+    // Throw range check
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        struct Player* attacker = &gs->players[i];
+        if (attacker->state != STATE_ATTACK || attacker->attackType != ATTACK_THROW) continue;
+        int o = (i == 0) ? 1 : 0;
+        struct Player* defender = &gs->players[o];
+
+        struct ThrowData* td = &attacker->character->throwData;
+        int total = td->startup + td->active + td->whiffRecovery;
+        int elapsed = total - attacker->stateTimer;
+
+        if (elapsed >= td->startup && elapsed < td->startup + td->active) {
+            float dx = fabsf(attacker->x - defender->x);
+            if (dx <= td->range && defender->state != STATE_THROWING && defender->state != STATE_THROWN) {
+                attacker->state = STATE_THROWING;
+                attacker->stateTimer = td->throwDuration;
+                attacker->velocityX = 0.0f;
+                attacker->velocityY = 0.0f;
+
+                defender->state = STATE_THROWN;
+                defender->stateTimer = td->throwDuration;
+                defender->velocityX = 0.0f;
+                defender->velocityY = 0.0f;
+            }
+        }
+    }
+
+    // Normal hit detection
 	for (int i = 0; i < MAX_PLAYERS; i++) {
 	    int oplayeronent = (i == 0) ? 1 : 0;
 	    struct Player* attacker = &gs->players[i];
-	
+
 	    if (attacker->state != STATE_ATTACK) continue;
-	
-	    struct AttackData* attackData = &attacker->character->attacks[attacker->attackType];
+	    if (attacker->attackType == ATTACK_THROW) continue;
+
+	    struct AttackData* attackData = attacker->wakeupAttack ? &getupAttackData : &attacker->character->attacks[attacker->attackType];
 	    int total = attackData->startup + attackData->active + attackData->recovery;
 	    int elapsed = total - attacker->stateTimer;
 	
@@ -1034,6 +1459,9 @@ void RunOneSimStep(struct GameState* gs) {
 	                float dw = defenderHurtboxes[hb].width;
 	                float dh = defenderHurtboxes[hb].height;
 	
+	                // Skip if defender is invincible
+	                if (defender->invincibleTimer > 0) continue;
+
 	                if (AABB(ax, ay, aw, ah, dx, dy, dw, dh)) {
 	                    attacker->hitConnected[s] = true;
 	
@@ -1049,6 +1477,7 @@ void RunOneSimStep(struct GameState* gs) {
 	                    result->blockKnockbackY = strip->blockKnockbackY;
 	                    result->overhead = strip->overhead;
 	                    result->low = strip->low;
+	                    result->knockdown = strip->knockdown;
 	
 	                    goto next_strip;
 	                }
@@ -1087,11 +1516,19 @@ void RunOneSimStep(struct GameState* gs) {
 	
 	        p->health -= hit->damage;
 	        p->stunAnimState = (p->state == STATE_CROUCH) ? 1 : 0;
-	        p->state = STATE_HITSTUN;
-	        p->stateTimer = hit->hitstun;
 	        p->velocityX = hit->knockbackX;
 	        p->velocityY = hit->knockbackY;
-	
+	        if (hit->knockdown) {
+	            p->state = STATE_KNOCKDOWN;
+	            p->stateTimer = KNOCKDOWN_GROUND_TIME;
+	            p->invincibleTimer = KNOCKDOWN_INVINCIBLE;
+	            p->grounded = false;
+	        } else {
+	            p->state = STATE_HITSTUN;
+	            p->stateTimer = hit->hitstun;
+	            p->wakeupAttack = false;
+	        }
+
 	        int attackerRemaining = gs->players[other].stateTimer;
 	        int defenderStun = hit->hitstun;
 	        int advantage = defenderStun - attackerRemaining;
@@ -1116,6 +1553,53 @@ void RunOneSimStep(struct GameState* gs) {
 	    }
     }
 
+    // Throw resolution
+    for (int i = 0; i < MAX_PLAYERS; i++) {
+        struct Player* p = &gs->players[i];
+        if (p->state != STATE_THROWING || p->stateTimer > 0) continue;
+        int o = (i == 0) ? 1 : 0;
+        struct Player* defender = &gs->players[o];
+        struct ThrowData* td = &p->character->throwData;
+
+        struct InputState* defInput = &gs->inputBuffer[index].players[o];
+        struct InputState* prevDefInput = &prevFrame->players[o];
+        bool defTechPressed = (defInput->medium && defInput->heavy) && !(prevDefInput->medium && prevDefInput->heavy);
+
+        bool inTechWindow = (defender->state == STATE_THROWN && defender->stateTimer >= td->throwDuration - THROW_TECH_WINDOW);
+
+        if (defender->state == STATE_THROWN && defTechPressed && inTechWindow) {
+            p->state = STATE_IDLE;
+            p->velocityX = 0.0f;
+            defender->state = STATE_IDLE;
+            defender->velocityX = 0.0f;
+            float pushDir = p->facingRight ? 50.0f : -50.0f;
+            p->x += pushDir;
+            defender->x -= pushDir;
+        } else if (defender->state == STATE_THROWN) {
+            defender->health -= td->damage;
+            defender->stunAnimState = 0;
+            defender->velocityX = p->facingRight ? td->knockbackX : -td->knockbackX;
+            defender->velocityY = td->knockbackY;
+            if (td->knockdown) {
+                defender->state = STATE_KNOCKDOWN;
+                defender->stateTimer = KNOCKDOWN_GROUND_TIME;
+                defender->invincibleTimer = KNOCKDOWN_INVINCIBLE;
+                defender->grounded = false;
+            } else {
+                defender->state = STATE_HITSTUN;
+                defender->stateTimer = td->hitstun;
+                defender->wakeupAttack = false;
+            }
+
+            p->state = STATE_ATTACK;
+            p->attackType = ATTACK_THROW;
+            p->stateTimer = td->throwRecovery;
+            p->velocityX = 0.0f;
+            p->velocityY = 0.0f;
+        } else {
+            p->state = STATE_IDLE;
+        }
+    }
 
     ResolvePlayerCollision(&gs->players[0], &gs->players[1]);
 
@@ -1229,6 +1713,12 @@ static Color DisplayColor(enum DisplayState s) {
         case DISPLAY_ATTACK_RECOVERY:  return (Color){180,  50,  50, 255};
         case DISPLAY_HITSTUN:          return (Color){255, 180,  40, 255};
         case DISPLAY_BLOCKSTUN:        return (Color){200,  80, 255, 255};
+        case DISPLAY_THROWING:         return (Color){255, 100, 255, 255};
+        case DISPLAY_THROWN:           return (Color){255,  50, 200, 255};
+        case DISPLAY_KNOCKDOWN:        return (Color){180,  50,  50, 255};
+        case DISPLAY_KNOCKDOWN_FORCED: return (Color){120,  30,  30, 255};
+        case DISPLAY_WAKEUP:           return (Color){100, 200, 100, 255};
+        case DISPLAY_ROLLING:          return (Color){100, 150, 255, 255};
         default:                    return (Color){100, 100, 100, 255};
     }
 }
@@ -1477,7 +1967,7 @@ int main(void) {
 
                     	    // Hitboxes (red) - only during attack
                     	    if (player->state == STATE_ATTACK) {
-                    	        struct AttackData* attackData = &character->attacks[player->attackType];
+                    	        struct AttackData* attackData = player->wakeupAttack ? &getupAttackData : &character->attacks[player->attackType];
                     	        int totalFrames = attackData->startup + attackData->active + attackData->recovery;
                     	        int elapsed = totalFrames - player->stateTimer;
                     	        for (int s = 0; s < attackData->stripCount; s++) {

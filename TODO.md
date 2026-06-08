@@ -27,6 +27,8 @@
 - [x] STATE_CROUCH: crouch on holding 2. framework for crouch attacks.
 - [ ] STATE_BLOCK: block attacks. added bools overhead and low on attacks. 
 - [x] Input Buffer: buffer up to 6 frames in advance. buffer during blockstun, attack, etc.
+- [x] Throw: Chord M+H to throw. Throw based on collison box.
+- [x] Knockdown and Wakeup options: certain attacks cause knockdown (rn, heavy and throw). options, roll/tech (direction or neutral), and universal getup attack.
 
 ## Next Steps
 
@@ -38,13 +40,6 @@
 #### Blocking
 - Chip damage on blocked specials 
 - Tune Airblock Behavior
-
-#### Knockdown + Wake-up
-- On certain attacks (e.g. heavy), force a hard knockdown
-- Character falls to ground, briefly invincible while grounded
-- Standing back up uses a fixed recovery period
-- Getup options: neutral, attack, roll forward/back
-- Opens okizeme (oki) — pressure on wake-up
 
 ### Neutral
 
