@@ -579,6 +579,7 @@ struct Player {
 	int chordIntent;
 	int invincibleTimer;
 	bool wakeupAttack;
+	int inputLock;
 };
 
 static void WorldRect(struct Player* p, struct Rect* r, float* outX, float* outY) {
@@ -764,6 +765,7 @@ struct SaveState {
     int chordIntent;
     int invincibleTimer;
     bool wakeupAttack;
+    int inputLock;
 };
 
 static struct GameState gameState;
@@ -824,6 +826,7 @@ void SavePlayerState(const struct Player* player, struct SaveState* save) {
     save->chordIntent = player->chordIntent;
     save->invincibleTimer = player->invincibleTimer;
     save->wakeupAttack = player->wakeupAttack;
+    save->inputLock = player->inputLock;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         save->hitConnected[i] = player->hitConnected[i];
     }
@@ -847,6 +850,7 @@ void RestorePlayerState(struct Player* player, const struct SaveState* save) {
     player->chordIntent = save->chordIntent;
     player->invincibleTimer = save->invincibleTimer;
     player->wakeupAttack = save->wakeupAttack;
+    player->inputLock = save->inputLock;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         player->hitConnected[i] = save->hitConnected[i];
     }
@@ -952,6 +956,7 @@ void InitPlayer(struct Player* player, float x, float y, struct Character* chara
 	player->chordIntent = 0;
 	player->invincibleTimer = 0;
 	player->wakeupAttack = false;
+	player->inputLock = 0;
     for (int i = 0; i < MAX_HITBOX_STRIPS; i++) {
         player->hitConnected[i] = false;
     }
@@ -986,6 +991,11 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
         player->invincibleTimer--;
     }
 
+    // Tech lockout decay
+    if (player->inputLock > 0) {
+        player->inputLock--;
+    }
+
     bool lightPressed = input->light && !prevInput->light;
     bool mediumPressed = input->medium && !prevInput->medium;
     bool heavyPressed = input->heavy && !prevInput->heavy;
@@ -1006,11 +1016,11 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
     switch (player->state) {
         case STATE_IDLE:
         case STATE_WALK:
-            if (throwPressed) {
+            if (throwPressed && player->inputLock == 0) {
                 StartThrow(player);
                 break;
             }
-            if (lightPressed || mediumPressed || heavyPressed) {
+            if ((lightPressed || mediumPressed || heavyPressed) && player->inputLock == 0) {
                 StartAttack(player, lightPressed ? ATTACK_LIGHT
                                           : mediumPressed ? ATTACK_MEDIUM
                                           : ATTACK_HEAVY);
@@ -1023,13 +1033,20 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 				break;
 			}
 
-            player->velocityX = directionX * player->character->walkSpeed;
-            player->state = (directionX != 0) ? STATE_WALK : STATE_IDLE;
-
             if (input->up && player->grounded) {
                 player->velocityY = -player->character->jumpStrength;
                 player->grounded = false;
                 player->state = STATE_JUMP;
+                break;
+            }
+
+            if (player->inputLock > 0 && player->velocityX != 0.0f) {
+                player->velocityX *= 0.85f;
+                if (fabsf(player->velocityX) < 1.0f) player->velocityX = 0.0f;
+                player->state = STATE_IDLE;
+            } else {
+                player->velocityX = directionX * player->character->walkSpeed;
+                player->state = (directionX != 0) ? STATE_WALK : STATE_IDLE;
             }
 
             break;
@@ -1039,27 +1056,32 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 				break;
 			}
 
-			if (throwPressed) {
+			if (throwPressed && player->inputLock == 0) {
 			    StartThrow(player);
 			    break;
 			}
 
-			if (lightPressed || mediumPressed || heavyPressed) {
+			if ((lightPressed || mediumPressed || heavyPressed) && player->inputLock == 0) {
                 StartAttack(player, lightPressed ? ATTACK_LIGHT //ATTACK_2L
                                           : mediumPressed ? ATTACK_MEDIUM //ATTACK_2M
                                           : ATTACK_HEAVY); //ATTACK_2H
                 break;
             }
 
-			player->velocityX = 0;
+			if (player->inputLock > 0 && player->velocityX != 0.0f) {
+			    player->velocityX *= 0.85f;
+			    if (fabsf(player->velocityX) < 1.0f) player->velocityX = 0.0f;
+			} else {
+			    player->velocityX = 0;
+			}
 
 			break;
         case STATE_JUMP:
-            if (throwPressed) {
+            if (throwPressed && player->inputLock == 0) {
                 StartThrow(player);
                 break;
             }
-            if (lightPressed || mediumPressed || heavyPressed) {
+            if ((lightPressed || mediumPressed || heavyPressed) && player->inputLock == 0) {
                 StartAttack(player, lightPressed ? ATTACK_LIGHT
                                           : mediumPressed ? ATTACK_MEDIUM
                                           : ATTACK_HEAVY);
@@ -1193,11 +1215,11 @@ void GameStep(struct Player* player, const struct Player* other, const struct In
 		case STATE_WAKEUP:
 		    player->velocityX = 0.0f;
 		    player->stateTimer--;
-		    if (throwPressed) {
-		        StartThrow(player);
-		        break;
-		    }
-		    if (lightPressed || mediumPressed || heavyPressed) {
+            if (throwPressed && player->inputLock == 0) {
+                StartThrow(player);
+                break;
+            }
+            if ((lightPressed || mediumPressed || heavyPressed) && player->inputLock == 0) {
 		        StartAttack(player, lightPressed ? ATTACK_LIGHT
 		                                : mediumPressed ? ATTACK_MEDIUM
 		                                : ATTACK_HEAVY);
@@ -1556,7 +1578,7 @@ void RunOneSimStep(struct GameState* gs) {
     // Throw resolution
     for (int i = 0; i < MAX_PLAYERS; i++) {
         struct Player* p = &gs->players[i];
-        if (p->state != STATE_THROWING || p->stateTimer > 0) continue;
+        if (p->state != STATE_THROWING) continue;
         int o = (i == 0) ? 1 : 0;
         struct Player* defender = &gs->players[o];
         struct ThrowData* td = &p->character->throwData;
@@ -1570,12 +1592,18 @@ void RunOneSimStep(struct GameState* gs) {
         if (defender->state == STATE_THROWN && defTechPressed && inTechWindow) {
             p->state = STATE_IDLE;
             p->velocityX = 0.0f;
+            p->bufferedAttack = -1;
+            p->bufferTimer = 0;
+            p->inputLock = 8;
             defender->state = STATE_IDLE;
             defender->velocityX = 0.0f;
-            float pushDir = p->facingRight ? 50.0f : -50.0f;
-            p->x += pushDir;
-            defender->x -= pushDir;
-        } else if (defender->state == STATE_THROWN) {
+            defender->bufferedAttack = -1;
+            defender->bufferTimer = 0;
+            defender->inputLock = 8;
+            float pushDir = p->facingRight ? -350.0f : 350.0f;
+            p->velocityX = pushDir;
+            defender->velocityX = -pushDir;
+        } else if (defender->state == STATE_THROWN && p->stateTimer <= 0) {
             defender->health -= td->damage;
             defender->stunAnimState = 0;
             defender->velocityX = p->facingRight ? td->knockbackX : -td->knockbackX;
@@ -1596,7 +1624,7 @@ void RunOneSimStep(struct GameState* gs) {
             p->stateTimer = td->throwRecovery;
             p->velocityX = 0.0f;
             p->velocityY = 0.0f;
-        } else {
+        } else if (defender->state != STATE_THROWN) {
             p->state = STATE_IDLE;
         }
     }
