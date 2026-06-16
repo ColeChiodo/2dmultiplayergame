@@ -1,0 +1,62 @@
+(A) KO when health reaches 0 +healthSystem
+(A) Implement blocking: STATE_BLOCK with overhead/low attack bools +blocking
+(B) Chip damage on blocked specials +blocking
+(C) Tune airblock behavior +blocking
+(B) On hit: both players slide apart by knockback-driven amount +pushback
+(B) On block: defender slides back +pushback
+(B) Left/right walls that stop player movement +stageBoundaries
+(C) Corner carry: push opponent into the corner +stageBoundaries
+(C) Wall splat / wall bounce for combos +stageBoundaries
+(B) Double-tap forward/backward to dash +dash
+(B) Forward dash: quick burst of speed +dash
+(B) Backdash: quick backward hop with optional brief invincibility +dash
+(C) Cancel dash into attacks (dash momentum carries) +dash
+(B) Universal throw command (light+medium, or forward+heavy close up) +throw
+(B) Beats blocking — strike/throw/block triangle +throw
+(C) Fixed throw damage, no scaling +throw
+(B) Tech window: opponent breaks throw with same input within ~7 frames +throw
+(C) Whiff animation if no one is in range +throw
+(B) Air blocking: hold back while airborne to block +airOptions
+(B) Air-to-air: normal attacks work in the air +airOptions
+(B) Juggles: opponent in hitstun after knockup can be hit again +airOptions
+(C) Landing recovery: brief landing lag after falling +airOptions
+(A) Add enum Motion field to AttackData (MOTION_NONE, MOTION_236, etc.) +motionInputs
+(A) Write DetectMotion() function reading backwards through input buffer +motionInputs
+(A) Normalize directions relative to facingRight for motion inputs +motionInputs
+(A) On button press, check each attack using that button for motion requirement +motionInputs
+(B) Timer countdown (99s standard) +roundSystem
+(C) Best-of-X rounds +roundSystem
+(C) Round start: reset positions, brief pause +roundSystem
+(C) Win screen / results display +roundSystem
+(A) Refactor to struct GameState: replace scattered globals +refactor
+(B) Port attack data, character stats, hitbox sizes to JSON +dataDriven
+(B) Parse with cJSON at startup +dataDriven
+(C) In-game editor: visual overlays that modify in-memory structs +dataDriven
+(A) Save state ring buffer (snapshot per frame) +rollback
+(A) On receiving remote input for already-simulated frame, roll back and re-simulate +rollback
+(A) Local prediction + resync +rollback
+x 2026-06-15 Raylib window + game loop with fixed timestep (60fps sim) +core
+x 2026-06-15 Single player movement (A/D left/right, Space jump, S crouch) +player
+x 2026-06-15 Gravity and ground collision (GROUND_HEIGHT) +physics
+x 2026-06-15 Player state machine: IDLE, WALK, JUMP, ATTACK +player
+x 2026-06-15 Basic attack state with duration timer (no attack type distinction) +combat
+x 2026-06-15 Rising edge input detection (button press vs hold) +input
+x 2026-06-15 Circular input buffer (size 120, for rollback prep) +input
+x 2026-06-15 Save/Restore player state functions +player
+x 2026-06-15 Debug overlay: sim FPS, frame counter, timings +debug
+x 2026-06-15 Dev controls: F1 toggle overlay, F2 reset, F3 pause, F4 step +debug
+x 2026-06-15 Player 2: distinct key binds (arrows), different color +player
+x 2026-06-15 GameState struct: players[MAX_PLAYERS] + inputBuffer[MAX_PLAYERS] +core
+x 2026-06-15 Attack Data System: attacktype enum, startup, active, recovery counts, damage, hitboxes, knockback +combat
+x 2026-06-15 Hit/Hurtboxes: debug drawing, aabb overlap detection +combat
+x 2026-06-15 On-screen input display (live + history) +debug
+x 2026-06-15 Camera2D: zooms out when players are further, clamped to stage limits +rendering
+x 2026-06-15 Collision Boxes: players push each other, cannot cross +physics
+x 2026-06-15 Animation Strips: per anim frame collision and hurt boxes +rendering
+x 2026-06-15 Hitstun: hit player can't act for x frames +combat
+x 2026-06-15 Debug State Timeline: visual display of each player's current state +debug
+x 2026-06-15 Auto face opponent +player
+x 2026-06-15 STATE_CROUCH: crouch on holding 2, framework for crouch attacks +player
+x 2026-06-15 Input Buffer: buffer up to 6 frames in advance, buffer during blockstun/attack +input
+x 2026-06-15 Throw: Chord M+H to throw, throw based on collision box +combat
+x 2026-06-15 Knockdown and Wakeup options: roll/tech (direction or neutral), universal getup attack +combat
