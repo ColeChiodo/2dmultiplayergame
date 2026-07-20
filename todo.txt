@@ -60,3 +60,4 @@ x 2026-06-15 STATE_CROUCH: crouch on holding 2, framework for crouch attacks +pl
 x 2026-06-15 Input Buffer: buffer up to 6 frames in advance, buffer during blockstun/attack +input
 x 2026-06-15 Throw: Chord M+H to throw, throw based on collision box +combat
 x 2026-06-15 Knockdown and Wakeup options: roll/tech (direction or neutral), universal getup attack +combat
+x 2026-07-20 2026-07-20 AI rework in odin-lang +odin

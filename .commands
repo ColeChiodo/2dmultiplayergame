@@ -1,3 +1,4 @@
-install:sudo pacman -S raylib cmake base-devel
-build:cmake -B build & cmake --build build
-run:./build/main
+install:sudo pacman -S raylib base-devel
+build:odin build ./src -vet -strict-style -out:./build/2dmultiplayergame
+brun:odin run ./src
+run:./build/2dmultiplayergame
